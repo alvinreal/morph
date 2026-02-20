@@ -362,10 +362,7 @@ mod tests {
         // Verify that the display output for each variant starts with a clear prefix
         let cases: Vec<(&str, MorphError)> = vec![
             ("Format error:", MorphError::format("bad")),
-            (
-                "I/O error:",
-                std::io::Error::other("disk full").into(),
-            ),
+            ("I/O error:", std::io::Error::other("disk full").into()),
             ("Mapping error:", MorphError::mapping("no match")),
             ("CLI error:", MorphError::cli("bad flag")),
             ("Value error:", MorphError::value("overflow")),
