@@ -206,7 +206,21 @@ fn csv_field_to_string(value: &Value) -> String {
         Value::Null => String::new(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
+        Value::Float(f) => {
+            let s = f.to_string();
+            // Ensure float representation always contains a decimal point
+            // so that CSV type inference re-parses it as Float, not Int.
+            if s.contains('.')
+                || s.contains('e')
+                || s.contains('E')
+                || s.contains("inf")
+                || s.contains("NaN")
+            {
+                s
+            } else {
+                format!("{s}.0")
+            }
+        }
         Value::String(s) => s.clone(),
         Value::Bytes(b) => format!("{b:?}"),
         Value::Array(_) | Value::Map(_) => {
