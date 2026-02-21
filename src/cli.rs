@@ -98,6 +98,18 @@ pub struct Cli {
     /// List supported formats
     #[arg(long = "formats")]
     pub formats: bool,
+
+    /// Apply a mapping file (.morph)
+    #[arg(short = 'm', long = "mapping")]
+    pub mapping: Option<PathBuf>,
+
+    /// Inline mapping expression (can be repeated; applied in order after -m)
+    #[arg(short = 'e', long = "expr", action = clap::ArgAction::Append)]
+    pub expr: Vec<String>,
+
+    /// Parse and validate the mapping without executing
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 impl Cli {
@@ -211,6 +223,43 @@ pub fn write_output(cli: &Cli, output: &str) -> crate::error::Result<()> {
     }
 }
 
+/// Build a combined mapping program from -m and -e flags.
+/// Returns Ok(None) if no mapping flags were given.
+pub fn build_mapping_program(
+    cli: &Cli,
+) -> crate::error::Result<Option<crate::mapping::ast::Program>> {
+    let has_mapping = cli.mapping.is_some();
+    let has_exprs = !cli.expr.is_empty();
+
+    if !has_mapping && !has_exprs {
+        return Ok(None);
+    }
+
+    let mut all_statements = Vec::new();
+
+    // Load mapping file first
+    if let Some(ref path) = cli.mapping {
+        let source = std::fs::read_to_string(path).map_err(|e| {
+            crate::error::MorphError::Io(std::io::Error::new(
+                e.kind(),
+                format!("{}: {e}", path.display()),
+            ))
+        })?;
+        let program = crate::mapping::parser::parse_str(&source)?;
+        all_statements.extend(program.statements);
+    }
+
+    // Then append inline expressions
+    for expr_str in &cli.expr {
+        let program = crate::mapping::parser::parse_str(expr_str)?;
+        all_statements.extend(program.statements);
+    }
+
+    Ok(Some(crate::mapping::ast::Program {
+        statements: all_statements,
+    }))
+}
+
 /// Run the full pipeline based on CLI args.
 pub fn run(cli: &Cli) -> crate::error::Result<()> {
     if cli.formats {
@@ -221,11 +270,34 @@ pub fn run(cli: &Cli) -> crate::error::Result<()> {
         return Ok(());
     }
 
+    // Build mapping program (if any flags given)
+    let mapping_program = build_mapping_program(cli)?;
+
+    // --dry-run: validate mapping and exit
+    if cli.dry_run {
+        match &mapping_program {
+            Some(_) => {
+                println!("mapping valid");
+                return Ok(());
+            }
+            None => {
+                println!("mapping valid");
+                return Ok(());
+            }
+        }
+    }
+
     let in_fmt = cli.resolve_input_format()?;
     let out_fmt = cli.resolve_output_format()?;
 
     let input_data = read_input(cli)?;
     let value = parse_input(&input_data, in_fmt)?;
+
+    // Apply mapping if present
+    let value = match mapping_program {
+        Some(ref program) => crate::mapping::eval::eval(program, &value)?,
+        None => value,
+    };
 
     // Determine pretty-printing: explicit flags > default based on TTY
     let pretty = if cli.pretty {
@@ -416,5 +488,156 @@ mod tests {
         assert_eq!(Format::Yaml.to_string(), "yaml");
         assert_eq!(Format::Toml.to_string(), "toml");
         assert_eq!(Format::Csv.to_string(), "csv");
+    }
+
+    // -- Mapping CLI flags --------------------------------------------------
+
+    #[test]
+    fn arg_parsing_mapping_file() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-i",
+            "in.json",
+            "-o",
+            "out.json",
+            "-m",
+            "transform.morph",
+        ])
+        .unwrap();
+        assert_eq!(cli.mapping, Some(PathBuf::from("transform.morph")));
+    }
+
+    #[test]
+    fn arg_parsing_single_expr() {
+        let cli =
+            Cli::try_parse_from(["morph", "-f", "json", "-t", "json", "-e", "rename .x -> .y"])
+                .unwrap();
+        assert_eq!(cli.expr, vec!["rename .x -> .y"]);
+    }
+
+    #[test]
+    fn arg_parsing_multiple_expr() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-f",
+            "json",
+            "-t",
+            "json",
+            "-e",
+            "rename .x -> .y",
+            "-e",
+            "drop .z",
+        ])
+        .unwrap();
+        assert_eq!(cli.expr, vec!["rename .x -> .y", "drop .z"]);
+    }
+
+    #[test]
+    fn arg_parsing_dry_run() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "--dry-run",
+            "-e",
+            "drop .x",
+            "-f",
+            "json",
+            "-t",
+            "json",
+        ])
+        .unwrap();
+        assert!(cli.dry_run);
+    }
+
+    #[test]
+    fn arg_parsing_mapping_and_expr_combined() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-m",
+            "base.morph",
+            "-e",
+            "drop .extra",
+            "-f",
+            "json",
+            "-t",
+            "yaml",
+        ])
+        .unwrap();
+        assert_eq!(cli.mapping, Some(PathBuf::from("base.morph")));
+        assert_eq!(cli.expr, vec!["drop .extra"]);
+    }
+
+    #[test]
+    fn no_mapping_flags_returns_none() {
+        let cli = Cli::try_parse_from(["morph", "-f", "json", "-t", "yaml"]).unwrap();
+        let program = build_mapping_program(&cli).unwrap();
+        assert!(program.is_none());
+    }
+
+    #[test]
+    fn build_mapping_from_expr() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-f",
+            "json",
+            "-t",
+            "json",
+            "-e",
+            "rename .old -> .new",
+        ])
+        .unwrap();
+        let program = build_mapping_program(&cli).unwrap();
+        assert!(program.is_some());
+        assert_eq!(program.unwrap().statements.len(), 1);
+    }
+
+    #[test]
+    fn build_mapping_multiple_exprs_in_order() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-f",
+            "json",
+            "-t",
+            "json",
+            "-e",
+            "rename .a -> .b",
+            "-e",
+            "drop .c",
+        ])
+        .unwrap();
+        let program = build_mapping_program(&cli).unwrap();
+        assert!(program.is_some());
+        assert_eq!(program.unwrap().statements.len(), 2);
+    }
+
+    #[test]
+    fn build_mapping_invalid_expr_returns_error() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-f",
+            "json",
+            "-t",
+            "json",
+            "-e",
+            "invalid!!!syntax",
+        ])
+        .unwrap();
+        let result = build_mapping_program(&cli);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_mapping_nonexistent_file_returns_error() {
+        let cli = Cli::try_parse_from([
+            "morph",
+            "-f",
+            "json",
+            "-t",
+            "json",
+            "-m",
+            "/nonexistent/path/transform.morph",
+        ])
+        .unwrap();
+        let result = build_mapping_program(&cli);
+        assert!(result.is_err());
     }
 }
