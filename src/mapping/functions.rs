@@ -197,18 +197,19 @@ fn fn_split(args: &[Value]) -> error::Result<Value> {
 }
 
 fn fn_join(args: &[Value]) -> error::Result<Value> {
-    expect_args("join", args, 2)?;
-    let arr = match &args[0] {
-        Value::Array(a) => a,
-        _ => {
-            return Err(error::MorphError::mapping(
-                "join() first argument must be an array",
-            ));
+    expect_min_args("join", args, 2)?;
+    // When the first argument is an array and there are exactly 2 args,
+    // behave as array-join(array, separator).
+    if args.len() == 2 {
+        if let Value::Array(a) = &args[0] {
+            let sep = to_str(&args[1]);
+            let parts: Vec<String> = a.iter().map(to_str).collect();
+            return Ok(Value::String(parts.join(&sep)));
         }
-    };
-    let sep = to_str(&args[1]);
-    let parts: Vec<String> = arr.iter().map(to_str).collect();
-    Ok(Value::String(parts.join(&sep)))
+    }
+    // Otherwise concatenate all arguments as strings.
+    let result: String = args.iter().map(to_str).collect();
+    Ok(Value::String(result))
 }
 
 fn fn_reverse(args: &[Value]) -> error::Result<Value> {
@@ -424,6 +425,19 @@ mod tests {
     }
 
     #[test]
+    fn test_lower_already_lower() {
+        let r = call_function("lower", &[Value::String("already lower".into())]).unwrap();
+        assert_eq!(r, Value::String("already lower".into()));
+    }
+
+    #[test]
+    fn test_lower_non_string_coerces() {
+        // lower(42) coerces to string via to_str, producing "42"
+        let r = call_function("lower", &[Value::Int(42)]).unwrap();
+        assert_eq!(r, Value::String("42".into()));
+    }
+
+    #[test]
     fn test_upper() {
         let r = call_function("upper", &[Value::String("hello".into())]).unwrap();
         assert_eq!(r, Value::String("HELLO".into()));
@@ -431,8 +445,14 @@ mod tests {
 
     #[test]
     fn test_trim() {
-        let r = call_function("trim", &[Value::String("  hi  ".into())]).unwrap();
-        assert_eq!(r, Value::String("hi".into()));
+        let r = call_function("trim", &[Value::String("  hello  ".into())]).unwrap();
+        assert_eq!(r, Value::String("hello".into()));
+    }
+
+    #[test]
+    fn test_trim_no_spaces() {
+        let r = call_function("trim", &[Value::String("no-spaces".into())]).unwrap();
+        assert_eq!(r, Value::String("no-spaces".into()));
     }
 
     #[test]
@@ -454,9 +474,29 @@ mod tests {
     }
 
     #[test]
+    fn test_len_empty_string() {
+        let r = call_function("len", &[Value::String("".into())]).unwrap();
+        assert_eq!(r, Value::Int(0));
+    }
+
+    #[test]
     fn test_len_array() {
         let r = call_function("len", &[Value::Array(vec![Value::Int(1), Value::Int(2)])]).unwrap();
         assert_eq!(r, Value::Int(2));
+    }
+
+    #[test]
+    fn test_len_array_3() {
+        let r = call_function(
+            "len",
+            &[Value::Array(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])],
+        )
+        .unwrap();
+        assert_eq!(r, Value::Int(3));
     }
 
     #[test]
@@ -471,6 +511,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(r, Value::String("hello rust".into()));
+    }
+
+    #[test]
+    fn test_replace_all_occurrences() {
+        let r = call_function(
+            "replace",
+            &[
+                Value::String("aaa".into()),
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(r, Value::String("bbb".into()));
     }
 
     #[test]
@@ -578,7 +632,18 @@ mod tests {
     }
 
     #[test]
-    fn test_join() {
+    fn test_split_no_match() {
+        // split("hello", "x") → ["hello"]
+        let r = call_function(
+            "split",
+            &[Value::String("hello".into()), Value::String("x".into())],
+        )
+        .unwrap();
+        assert_eq!(r, Value::Array(vec![Value::String("hello".into())]));
+    }
+
+    #[test]
+    fn test_join_array() {
         let arr = Value::Array(vec![
             Value::String("a".into()),
             Value::String("b".into()),
@@ -586,6 +651,36 @@ mod tests {
         ]);
         let r = call_function("join", &[arr, Value::String(",".into())]).unwrap();
         assert_eq!(r, Value::String("a,b,c".into()));
+    }
+
+    #[test]
+    fn test_join_strings() {
+        // join("a", "b", "c") → "abc"
+        let r = call_function(
+            "join",
+            &[
+                Value::String("a".into()),
+                Value::String("b".into()),
+                Value::String("c".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(r, Value::String("abc".into()));
+    }
+
+    #[test]
+    fn test_join_with_field_values() {
+        // join(.first, " ", .last) simulated with direct values
+        let r = call_function(
+            "join",
+            &[
+                Value::String("John".into()),
+                Value::String(" ".into()),
+                Value::String("Doe".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(r, Value::String("John Doe".into()));
     }
 
     #[test]
@@ -776,6 +871,22 @@ mod tests {
     }
 
     #[test]
+    fn test_coalesce_first_non_null() {
+        // coalesce("first", "second") → "first"
+        assert_eq!(
+            call_function(
+                "coalesce",
+                &[
+                    Value::String("first".into()),
+                    Value::String("second".into())
+                ]
+            )
+            .unwrap(),
+            Value::String("first".into())
+        );
+    }
+
+    #[test]
     fn test_default_fn() {
         assert_eq!(
             call_function("default", &[Value::Null, Value::Int(42)]).unwrap(),
@@ -834,7 +945,7 @@ mod tests {
         assert!(call_function("rtrim", &[Value::String(" a ".into())]).is_ok());
         assert!(call_function("substring", &[Value::String("abc".into()), Value::Int(0)]).is_ok());
         assert!(call_function("int", &[Value::String("42".into())]).is_ok());
-        assert!(call_function("float", &[Value::String("3.14".into())]).is_ok());
+        assert!(call_function("float", &[Value::String("3.15".into())]).is_ok());
         assert!(call_function("str", &[Value::Int(42)]).is_ok());
         assert!(call_function("string", &[Value::Int(42)]).is_ok());
         assert!(call_function("bool", &[Value::Int(1)]).is_ok());
