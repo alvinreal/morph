@@ -207,7 +207,7 @@ fn fn_join(args: &[Value]) -> error::Result<Value> {
         }
     };
     let sep = to_str(&args[1]);
-    let parts: Vec<String> = arr.iter().map(|v| to_str(v)).collect();
+    let parts: Vec<String> = arr.iter().map(to_str).collect();
     Ok(Value::String(parts.join(&sep)))
 }
 
@@ -634,8 +634,8 @@ mod tests {
     #[test]
     fn test_to_float() {
         assert_eq!(
-            call_function("to_float", &[Value::String("3.14".into())]).unwrap(),
-            Value::Float(3.14)
+            call_function("to_float", &[Value::String("2.72".into())]).unwrap(),
+            Value::Float(2.72)
         );
         assert_eq!(
             call_function("to_float", &[Value::Int(42)]).unwrap(),
@@ -694,8 +694,8 @@ mod tests {
             Value::Int(5)
         );
         assert_eq!(
-            call_function("abs", &[Value::Float(-3.14)]).unwrap(),
-            Value::Float(3.14)
+            call_function("abs", &[Value::Float(-2.72)]).unwrap(),
+            Value::Float(2.72)
         );
     }
 

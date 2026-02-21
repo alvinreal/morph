@@ -222,11 +222,8 @@ fn eval_binary_op(left: &Value, op: BinOp, right: &Value) -> error::Result<Value
             eval_arithmetic(left, right, |a, b| a / b, |a, b| a / b)
         }
         BinOp::Mod => {
-            match right {
-                Value::Int(0) => {
-                    return Err(error::MorphError::mapping("modulo by zero"));
-                }
-                _ => {}
+            if let Value::Int(0) = right {
+                return Err(error::MorphError::mapping("modulo by zero"));
             }
             eval_arithmetic(left, right, |a, b| a % b, |a, b| a % b)
         }
