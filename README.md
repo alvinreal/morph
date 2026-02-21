@@ -1,6 +1,21 @@
-# morph
+<p align="center">
+  <img src="assets/logo.png" alt="morph logo" width="180" />
+</p>
 
-**Universal data format converter with a mapping language.**
+<h1 align="center">morph</h1>
+
+<p align="center">
+  <strong>Universal data format converter with a mapping language.</strong>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#supported-formats">Formats</a> •
+  <a href="#the-mapping-language">Mapping Language</a> •
+  <a href="#installation">Install</a>
+</p>
+
+---
 
 `morph` converts structured data between formats — JSON, YAML, TOML, CSV, XML, MessagePack, and more — using a simple, readable mapping language that gives you full control over how fields are transformed.
 
