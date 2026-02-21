@@ -24,6 +24,8 @@ fn eval_statement(stmt: &Statement, value: &Value) -> error::Result<Value> {
         Statement::Cast {
             path, target_type, ..
         } => eval_cast(value, path, target_type),
+        Statement::Flatten { path, prefix, .. } => eval_flatten(value, path, prefix.as_deref()),
+        Statement::Nest { paths, target, .. } => eval_nest(value, paths, target),
     }
 }
 
@@ -173,6 +175,88 @@ fn cast_value(value: &Value, target_type: &CastType) -> error::Result<Value> {
             ))),
         },
     }
+}
+
+// ---------------------------------------------------------------------------
+// flatten
+// ---------------------------------------------------------------------------
+
+fn eval_flatten(value: &Value, path: &Path, prefix: Option<&str>) -> error::Result<Value> {
+    let target_val = resolve_path(value, &path.segments);
+    match target_val {
+        Some(Value::Map(inner_map)) => {
+            // Determine the prefix for flattened keys
+            let key_prefix = match prefix {
+                Some(p) => p.to_string(),
+                None => {
+                    // Use the last segment of the path as the prefix
+                    last_field_name(&path.segments).unwrap_or_default()
+                }
+            };
+
+            // Remove the original nested field
+            let mut result = remove_path(value, &path.segments);
+
+            // Insert flattened key-value pairs into the parent map
+            if let Value::Map(ref mut parent_map) = result {
+                for (key, val) in &inner_map {
+                    let flat_key = format!("{key_prefix}_{key}");
+                    parent_map.insert(flat_key, val.clone());
+                }
+            }
+
+            Ok(result)
+        }
+        Some(_) => {
+            // Non-object: no-op
+            Ok(value.clone())
+        }
+        None => {
+            // Path doesn't exist: no-op
+            Ok(value.clone())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// nest
+// ---------------------------------------------------------------------------
+
+fn eval_nest(value: &Value, paths: &[Path], target: &Path) -> error::Result<Value> {
+    // Get the target field name to strip as prefix
+    let target_name = last_field_name(&target.segments).unwrap_or_default();
+
+    let mut nested_map = IndexMap::new();
+    let mut result = value.clone();
+
+    for path in paths {
+        if let Some(val) = resolve_path(value, &path.segments) {
+            // Get the field name from the path
+            let field_name = last_field_name(&path.segments).unwrap_or_default();
+
+            // Strip target prefix (e.g., "a_x" with target "a" → "x")
+            let nested_key = if !target_name.is_empty() {
+                let prefix_with_underscore = format!("{target_name}_");
+                if field_name.starts_with(&prefix_with_underscore) {
+                    field_name[prefix_with_underscore.len()..].to_string()
+                } else {
+                    field_name
+                }
+            } else {
+                field_name
+            };
+
+            nested_map.insert(nested_key, val);
+
+            // Remove the original field
+            result = remove_path(&result, &path.segments);
+        }
+    }
+
+    // Set the nested map at the target path
+    result = set_path(&result, &target.segments, Value::Map(nested_map));
+
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
