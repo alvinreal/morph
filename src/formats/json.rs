@@ -1,10 +1,17 @@
 use crate::error;
 use crate::value::Value;
 use indexmap::IndexMap;
+use std::io::Read;
 
 /// Parse a JSON string into a Universal Value.
 pub fn from_str(input: &str) -> error::Result<Value> {
     let json_val: serde_json::Value = serde_json::from_str(input)?;
+    Ok(json_to_value(json_val))
+}
+
+/// Parse JSON from a reader into a Universal Value.
+pub fn from_reader<R: Read>(reader: R) -> error::Result<Value> {
+    let json_val: serde_json::Value = serde_json::from_reader(reader)?;
     Ok(json_to_value(json_val))
 }
 
@@ -81,68 +88,227 @@ fn value_to_json(value: &Value) -> serde_json::Value {
 mod tests {
     use super::*;
 
+    // -- Primitives round-trip --
+
     #[test]
-    fn parse_simple_object() {
-        let input = r#"{"name": "Alice", "age": 30}"#;
-        let val = from_str(input).unwrap();
-        assert_eq!(val.get_path(".name"), Some(&Value::String("Alice".into())));
-        assert_eq!(val.get_path(".age"), Some(&Value::Int(30)));
+    fn roundtrip_null() {
+        let val = from_str("null").unwrap();
+        assert_eq!(val, Value::Null);
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "null");
     }
 
     #[test]
-    fn parse_nested_object() {
-        let input = r#"{"user": {"name": "Bob", "scores": [1, 2, 3]}}"#;
-        let val = from_str(input).unwrap();
-        assert_eq!(
-            val.get_path(".user.name"),
-            Some(&Value::String("Bob".into()))
-        );
-        assert_eq!(val.get_path(".user.scores[0]"), Some(&Value::Int(1)));
+    fn roundtrip_bool_true() {
+        let val = from_str("true").unwrap();
+        assert_eq!(val, Value::Bool(true));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "true");
     }
 
     #[test]
-    fn parse_all_types() {
-        let input = r#"{"s": "hello", "i": 42, "f": 3.15, "b": true, "n": null, "a": [1]}"#;
-        let val = from_str(input).unwrap();
-        assert_eq!(val.get_path(".s"), Some(&Value::String("hello".into())));
-        assert_eq!(val.get_path(".i"), Some(&Value::Int(42)));
-        assert_eq!(val.get_path(".f"), Some(&Value::Float(3.15)));
-        assert_eq!(val.get_path(".b"), Some(&Value::Bool(true)));
-        assert_eq!(val.get_path(".n"), Some(&Value::Null));
+    fn roundtrip_bool_false() {
+        let val = from_str("false").unwrap();
+        assert_eq!(val, Value::Bool(false));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "false");
     }
 
     #[test]
-    fn roundtrip_json() {
-        let input = r#"{"key":"value","num":42,"arr":[1,2,3]}"#;
-        let val = from_str(input).unwrap();
-        let output = to_string(&val).unwrap();
-        let val2 = from_str(&output).unwrap();
+    fn roundtrip_int() {
+        let val = from_str("42").unwrap();
+        assert_eq!(val, Value::Int(42));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "42");
+    }
+
+    #[test]
+    fn roundtrip_float() {
+        let val = from_str("3.15").unwrap();
+        assert_eq!(val, Value::Float(3.15));
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
         assert_eq!(val, val2);
     }
 
     #[test]
-    fn pretty_output() {
-        let input = r#"{"a":1}"#;
+    fn roundtrip_string() {
+        let val = from_str(r#""hello""#).unwrap();
+        assert_eq!(val, Value::String("hello".into()));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, r#""hello""#);
+    }
+
+    // -- Nested objects --
+
+    #[test]
+    fn nested_objects_roundtrip() {
+        let input = r#"{"a":{"b":{"c":1}}}"#;
+        let val = from_str(input).unwrap();
+        assert_eq!(val.get_path(".a.b.c"), Some(&Value::Int(1)));
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        assert_eq!(val, val2);
+    }
+
+    // -- Arrays --
+
+    #[test]
+    fn arrays_roundtrip() {
+        let input = r#"[1,"two",null,[3]]"#;
+        let val = from_str(input).unwrap();
+        let arr = match &val {
+            Value::Array(a) => a,
+            _ => panic!("expected array"),
+        };
+        assert_eq!(arr.len(), 4);
+        assert_eq!(arr[0], Value::Int(1));
+        assert_eq!(arr[1], Value::String("two".into()));
+        assert_eq!(arr[2], Value::Null);
+        assert!(matches!(&arr[3], Value::Array(_)));
+
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        assert_eq!(val, val2);
+    }
+
+    // -- Large integers --
+
+    #[test]
+    fn large_integers_i64_max() {
+        let input = format!("{}", i64::MAX);
+        let val = from_str(&input).unwrap();
+        assert_eq!(val, Value::Int(i64::MAX));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn large_integers_i64_min() {
+        let input = format!("{}", i64::MIN);
+        let val = from_str(&input).unwrap();
+        assert_eq!(val, Value::Int(i64::MIN));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, input);
+    }
+
+    // -- Float precision --
+
+    #[test]
+    fn float_precision_preserved() {
+        let input = "3.14159265358979";
+        let val = from_str(input).unwrap();
+        match &val {
+            Value::Float(f) => {
+                #[allow(clippy::approx_constant)]
+                let expected = 3.14159265358979_f64;
+                assert!((*f - expected).abs() < f64::EPSILON);
+            }
+            _ => panic!("expected Float"),
+        }
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        assert_eq!(val, val2);
+    }
+
+    // -- Unicode --
+
+    #[test]
+    fn unicode_roundtrip() {
+        let input = r#""héllo wörld 🦀""#;
+        let val = from_str(input).unwrap();
+        assert_eq!(val, Value::String("héllo wörld 🦀".into()));
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        assert_eq!(val, val2);
+    }
+
+    // -- Empty structures --
+
+    #[test]
+    fn empty_object() {
+        let val = from_str("{}").unwrap();
+        assert_eq!(val, Value::Map(IndexMap::new()));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "{}");
+    }
+
+    #[test]
+    fn empty_array() {
+        let val = from_str("[]").unwrap();
+        assert_eq!(val, Value::Array(vec![]));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, "[]");
+    }
+
+    #[test]
+    fn empty_string() {
+        let val = from_str(r#""""#).unwrap();
+        assert_eq!(val, Value::String(String::new()));
+        let out = to_string(&val).unwrap();
+        assert_eq!(out, r#""""#);
+    }
+
+    // -- Key order preserved --
+
+    #[test]
+    fn key_order_preserved() {
+        let input = r#"{"z":1,"a":2,"m":3}"#;
+        let val = from_str(input).unwrap();
+        let keys: Vec<&String> = match &val {
+            Value::Map(m) => m.keys().collect(),
+            _ => panic!("expected map"),
+        };
+        assert_eq!(keys, vec!["z", "a", "m"]);
+
+        // Round-trip should preserve order
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        let keys2: Vec<&String> = match &val2 {
+            Value::Map(m) => m.keys().collect(),
+            _ => panic!("expected map"),
+        };
+        assert_eq!(keys2, vec!["z", "a", "m"]);
+    }
+
+    // -- Pretty output --
+
+    #[test]
+    fn pretty_output_indented() {
+        let input = r#"{"a":1,"b":[2,3]}"#;
         let val = from_str(input).unwrap();
         let pretty = to_string_pretty(&val).unwrap();
         assert!(pretty.contains('\n'));
         assert!(pretty.contains("  "));
+        // Pretty output should still parse back correctly
+        let val2 = from_str(&pretty).unwrap();
+        assert_eq!(val, val2);
     }
 
+    // -- Compact output --
+
     #[test]
-    fn compact_output() {
-        let input = r#"{"a": 1, "b": 2}"#;
+    fn compact_output_no_whitespace() {
+        let input = r#"{"a": 1, "b": [2, 3]}"#;
         let val = from_str(input).unwrap();
         let compact = to_string(&val).unwrap();
         assert!(!compact.contains('\n'));
+        assert!(!compact.contains("  "));
     }
 
+    // -- Invalid JSON --
+
     #[test]
-    fn parse_error_has_location() {
+    fn invalid_json_returns_format_error_with_position() {
         let bad = "{ invalid }";
         let err = from_str(bad).unwrap_err();
         match err {
-            crate::error::MorphError::Format { line, column, .. } => {
+            crate::error::MorphError::Format {
+                message,
+                line,
+                column,
+            } => {
+                assert!(!message.is_empty());
                 assert!(line.is_some());
                 assert!(column.is_some());
             }
@@ -151,14 +317,68 @@ mod tests {
     }
 
     #[test]
-    fn empty_object() {
-        let val = from_str("{}").unwrap();
-        assert_eq!(val, Value::Map(IndexMap::new()));
+    fn invalid_json_truncated() {
+        let err = from_str(r#"{"key": "#).unwrap_err();
+        assert!(matches!(err, crate::error::MorphError::Format { .. }));
     }
 
     #[test]
-    fn empty_array() {
-        let val = from_str("[]").unwrap();
-        assert_eq!(val, Value::Array(vec![]));
+    fn invalid_json_trailing_comma() {
+        let err = from_str(r#"{"a": 1,}"#).unwrap_err();
+        assert!(matches!(err, crate::error::MorphError::Format { .. }));
+    }
+
+    // -- Large file --
+
+    #[test]
+    fn large_json_array_parses() {
+        // Build a JSON array with 10_000 objects
+        let mut items: Vec<String> = Vec::with_capacity(10_000);
+        for i in 0..10_000 {
+            items.push(format!(r#"{{"id":{},"name":"item_{i}"}}"#, i));
+        }
+        let input = format!("[{}]", items.join(","));
+        let val = from_str(&input).unwrap();
+        let arr = match &val {
+            Value::Array(a) => a,
+            _ => panic!("expected array"),
+        };
+        assert_eq!(arr.len(), 10_000);
+        assert_eq!(arr[0].get_path(".id"), Some(&Value::Int(0)));
+        assert_eq!(arr[9999].get_path(".id"), Some(&Value::Int(9999)));
+    }
+
+    // -- from_reader --
+
+    #[test]
+    fn from_reader_works() {
+        let data = r#"{"x": 42}"#;
+        let val = from_reader(data.as_bytes()).unwrap();
+        assert_eq!(val.get_path(".x"), Some(&Value::Int(42)));
+    }
+
+    // -- Complex nested round-trip --
+
+    #[test]
+    fn complex_roundtrip() {
+        let input = r#"{"users":[{"name":"Alice","scores":[100,95],"meta":{"active":true}},{"name":"Bob","scores":[],"meta":{"active":false}}],"total":2}"#;
+        let val = from_str(input).unwrap();
+        let out = to_string(&val).unwrap();
+        let val2 = from_str(&out).unwrap();
+        assert_eq!(val, val2);
+    }
+
+    // -- Negative numbers --
+
+    #[test]
+    fn negative_int() {
+        let val = from_str("-42").unwrap();
+        assert_eq!(val, Value::Int(-42));
+    }
+
+    #[test]
+    fn negative_float() {
+        let val = from_str("-1.5").unwrap();
+        assert_eq!(val, Value::Float(-1.5));
     }
 }
