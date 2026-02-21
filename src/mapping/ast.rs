@@ -94,6 +94,18 @@ pub enum Statement {
         target_type: CastType,
         span: Span,
     },
+    /// `flatten .address` or `flatten .address -> prefix "addr"`
+    Flatten {
+        path: Path,
+        prefix: Option<String>,
+        span: Span,
+    },
+    /// `nest .a_x, .a_y -> .a`
+    Nest {
+        paths: Vec<Path>,
+        target: Path,
+        span: Span,
+    },
 }
 
 /// A parsed mapping program: a list of statements.

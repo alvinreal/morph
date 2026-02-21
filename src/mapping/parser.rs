@@ -97,6 +97,8 @@ impl Parser {
             TokenKind::Set => self.parse_set(),
             TokenKind::Default => self.parse_default(),
             TokenKind::Cast => self.parse_cast(),
+            TokenKind::Flatten => self.parse_flatten(),
+            TokenKind::Nest => self.parse_nest(),
             _ => {
                 let suggestion = suggest_keyword(&token.kind);
                 let msg = if let Some(s) = suggestion {
@@ -211,6 +213,65 @@ impl Parser {
                 token.span.column,
             )),
         }
+    }
+
+    fn parse_flatten(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'flatten'
+        let path = self.parse_path()?;
+
+        // Check for optional -> prefix "..."
+        let prefix = if matches!(self.peek_kind(), Some(TokenKind::Arrow)) {
+            self.advance(); // consume '->'
+                            // Expect the identifier "prefix"
+            match self.peek_kind() {
+                Some(TokenKind::Ident(name)) if name == "prefix" => {
+                    self.advance(); // consume 'prefix'
+                }
+                _ => {
+                    let span = self.current_span();
+                    return Err(error::MorphError::mapping_at(
+                        "expected 'prefix' after '->' in flatten",
+                        span.line,
+                        span.column,
+                    ));
+                }
+            }
+            // Expect a string literal for the prefix value
+            match self.advance() {
+                Some(Token {
+                    kind: TokenKind::StringLit(s),
+                    ..
+                }) => Some(s),
+                _ => {
+                    let span = self.current_span();
+                    return Err(error::MorphError::mapping_at(
+                        "expected string literal for prefix value in flatten",
+                        span.line,
+                        span.column,
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        Ok(Statement::Flatten {
+            path,
+            prefix,
+            span: start.span,
+        })
+    }
+
+    fn parse_nest(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'nest'
+        let paths = self.parse_path_list()?;
+        self.expect_exact(&TokenKind::Arrow)?;
+        let target = self.parse_path()?;
+        Ok(Statement::Nest {
+            paths,
+            target,
+            span: start.span,
+        })
     }
 
     fn parse_path_list(&mut self) -> error::Result<Vec<Path>> {
