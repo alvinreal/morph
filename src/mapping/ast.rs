@@ -106,6 +106,8 @@ pub enum Statement {
         target: Path,
         span: Span,
     },
+    /// `where <condition>` — filter array elements by condition
+    Where { condition: Expr, span: Span },
 }
 
 /// A parsed mapping program: a list of statements.
