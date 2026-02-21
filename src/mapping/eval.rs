@@ -27,6 +27,7 @@ fn eval_statement(stmt: &Statement, value: &Value) -> error::Result<Value> {
         Statement::Flatten { path, prefix, .. } => eval_flatten(value, path, prefix.as_deref()),
         Statement::Nest { paths, target, .. } => eval_nest(value, paths, target),
         Statement::Where { condition, .. } => eval_where(value, condition),
+        Statement::Sort { keys, .. } => eval_sort(value, keys),
     }
 }
 
@@ -286,6 +287,50 @@ fn eval_where(value: &Value, condition: &Expr) -> error::Result<Value> {
                 Ok(Value::Null)
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// sort
+// ---------------------------------------------------------------------------
+
+fn eval_sort(value: &Value, keys: &[SortKey]) -> error::Result<Value> {
+    match value {
+        Value::Array(arr) => {
+            let mut sorted = arr.clone();
+            sorted.sort_by(|a, b| {
+                for key in keys {
+                    let val_a = resolve_path(a, &key.path.segments).unwrap_or(Value::Null);
+                    let val_b = resolve_path(b, &key.path.segments).unwrap_or(Value::Null);
+
+                    // Nulls always sort last regardless of direction
+                    let ordering = match (&val_a, &val_b) {
+                        (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
+                        (Value::Null, _) => std::cmp::Ordering::Greater, // null last
+                        (_, Value::Null) => std::cmp::Ordering::Less,    // null last
+                        _ => compare_values(&val_a, &val_b).unwrap_or(std::cmp::Ordering::Equal),
+                    };
+
+                    let ordering = match key.direction {
+                        SortDirection::Asc => ordering,
+                        SortDirection::Desc => {
+                            // Reverse, but keep nulls last
+                            match (&val_a, &val_b) {
+                                (Value::Null, _) | (_, Value::Null) => ordering,
+                                _ => ordering.reverse(),
+                            }
+                        }
+                    };
+
+                    if ordering != std::cmp::Ordering::Equal {
+                        return ordering;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            Ok(Value::Array(sorted))
+        }
+        _ => Ok(value.clone()), // non-array: no-op
     }
 }
 

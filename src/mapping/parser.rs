@@ -100,6 +100,7 @@ impl Parser {
             TokenKind::Flatten => self.parse_flatten(),
             TokenKind::Nest => self.parse_nest(),
             TokenKind::Where => self.parse_where(),
+            TokenKind::Sort => self.parse_sort(),
             _ => {
                 let suggestion = suggest_keyword(&token.kind);
                 let msg = if let Some(s) = suggestion {
@@ -282,6 +283,43 @@ impl Parser {
             condition,
             span: start.span,
         })
+    }
+
+    fn parse_sort(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'sort'
+        let mut keys = Vec::new();
+
+        // Parse first sort key
+        let path = self.parse_path()?;
+        let direction = self.parse_sort_direction();
+        keys.push(SortKey { path, direction });
+
+        // Parse additional sort keys separated by commas
+        while let Some(TokenKind::Comma) = self.peek_kind() {
+            self.advance(); // consume comma
+            let path = self.parse_path()?;
+            let direction = self.parse_sort_direction();
+            keys.push(SortKey { path, direction });
+        }
+
+        Ok(Statement::Sort {
+            keys,
+            span: start.span,
+        })
+    }
+
+    fn parse_sort_direction(&mut self) -> SortDirection {
+        match self.peek_kind() {
+            Some(TokenKind::Asc) => {
+                self.advance();
+                SortDirection::Asc
+            }
+            Some(TokenKind::Desc) => {
+                self.advance();
+                SortDirection::Desc
+            }
+            _ => SortDirection::Asc, // default ascending
+        }
     }
 
     fn parse_path_list(&mut self) -> error::Result<Vec<Path>> {

@@ -108,6 +108,22 @@ pub enum Statement {
     },
     /// `where <condition>` — filter array elements by condition
     Where { condition: Expr, span: Span },
+    /// `sort .field asc, .field2 desc` — sort array elements
+    Sort { keys: Vec<SortKey>, span: Span },
+}
+
+/// A sort direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+/// A single sort key: path + direction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SortKey {
+    pub path: Path,
+    pub direction: SortDirection,
 }
 
 /// A parsed mapping program: a list of statements.
