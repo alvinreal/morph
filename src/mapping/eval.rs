@@ -26,6 +26,7 @@ fn eval_statement(stmt: &Statement, value: &Value) -> error::Result<Value> {
         } => eval_cast(value, path, target_type),
         Statement::Flatten { path, prefix, .. } => eval_flatten(value, path, prefix.as_deref()),
         Statement::Nest { paths, target, .. } => eval_nest(value, paths, target),
+        Statement::Where { condition, .. } => eval_where(value, condition),
     }
 }
 
@@ -257,6 +258,35 @@ fn eval_nest(value: &Value, paths: &[Path], target: &Path) -> error::Result<Valu
     result = set_path(&result, &target.segments, Value::Map(nested_map));
 
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// where (filter)
+// ---------------------------------------------------------------------------
+
+fn eval_where(value: &Value, condition: &Expr) -> error::Result<Value> {
+    match value {
+        Value::Array(arr) => {
+            let mut filtered = Vec::new();
+            for item in arr {
+                let result = eval_expr(condition, item)?;
+                if is_truthy(&result) {
+                    filtered.push(item.clone());
+                }
+            }
+            Ok(Value::Array(filtered))
+        }
+        _ => {
+            // For non-arrays, apply as a boolean gate: if condition is true,
+            // return value unchanged; otherwise return null
+            let result = eval_expr(condition, value)?;
+            if is_truthy(&result) {
+                Ok(value.clone())
+            } else {
+                Ok(Value::Null)
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -99,6 +99,7 @@ impl Parser {
             TokenKind::Cast => self.parse_cast(),
             TokenKind::Flatten => self.parse_flatten(),
             TokenKind::Nest => self.parse_nest(),
+            TokenKind::Where => self.parse_where(),
             _ => {
                 let suggestion = suggest_keyword(&token.kind);
                 let msg = if let Some(s) = suggestion {
@@ -270,6 +271,15 @@ impl Parser {
         Ok(Statement::Nest {
             paths,
             target,
+            span: start.span,
+        })
+    }
+
+    fn parse_where(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'where'
+        let condition = self.parse_expr()?;
+        Ok(Statement::Where {
+            condition,
             span: start.span,
         })
     }
