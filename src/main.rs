@@ -1,3 +1,9 @@
+use std::process;
+
 fn main() {
-    println!("morph v{}", env!("CARGO_PKG_VERSION"));
+    let cli = morph::cli::Cli::parse_args();
+    if let Err(e) = morph::cli::run(&cli) {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    }
 }
