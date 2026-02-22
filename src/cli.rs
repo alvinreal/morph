@@ -200,7 +200,11 @@ impl Cli {
     pub fn resolve_input_format(&self) -> crate::error::Result<Format> {
         if let Some(ref name) = self.from {
             return Format::from_name(name).ok_or_else(|| {
-                crate::error::MorphError::cli(format!("unknown input format: '{name}'"))
+                let mut msg = format!("unknown input format: '{name}'");
+                if let Some(suggestion) = crate::error::suggest_format(name) {
+                    msg.push_str(&format!(". Did you mean '{suggestion}'?"));
+                }
+                crate::error::MorphError::cli(msg)
             });
         }
         if let Some(ref path) = self.input {
@@ -220,7 +224,11 @@ impl Cli {
     pub fn resolve_output_format(&self) -> crate::error::Result<Format> {
         if let Some(ref name) = self.to {
             return Format::from_name(name).ok_or_else(|| {
-                crate::error::MorphError::cli(format!("unknown output format: '{name}'"))
+                let mut msg = format!("unknown output format: '{name}'");
+                if let Some(suggestion) = crate::error::suggest_format(name) {
+                    msg.push_str(&format!(". Did you mean '{suggestion}'?"));
+                }
+                crate::error::MorphError::cli(msg)
             });
         }
         if let Some(ref path) = self.output {

@@ -121,37 +121,70 @@ fn eval_cast(value: &Value, path: &Path, target_type: &CastType) -> error::Resul
     let current = resolve_path(value, &path.segments);
     match current {
         Some(val) => {
-            let casted = cast_value(&val, target_type)?;
+            let casted = cast_value(&val, target_type, path)?;
             Ok(set_path(value, &path.segments, casted))
         }
         None => Ok(value.clone()),
     }
 }
 
-fn cast_value(value: &Value, target_type: &CastType) -> error::Result<Value> {
+/// Get a short human-readable type name for a Value.
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Int(_) => "int",
+        Value::Float(_) => "float",
+        Value::String(_) => "string",
+        Value::Bytes(_) => "bytes",
+        Value::Array(_) => "array",
+        Value::Map(_) => "map",
+    }
+}
+
+/// Preview a value for error messages (truncated).
+fn value_preview(value: &Value) -> String {
+    let s = format!("{value}");
+    if s.len() > 50 {
+        format!("{}...", &s[..47])
+    } else {
+        s
+    }
+}
+
+fn cast_value(value: &Value, target_type: &CastType, path: &Path) -> error::Result<Value> {
+    let path_str = path.to_string();
     match target_type {
         CastType::Int => match value {
             Value::Int(_) => Ok(value.clone()),
             Value::Float(f) => Ok(Value::Int(*f as i64)),
             Value::String(s) => s.parse::<i64>().map(Value::Int).map_err(|_| {
-                error::MorphError::mapping(format!("cannot cast string \"{s}\" to int"))
+                error::MorphError::mapping(format!(
+                    "cannot cast string \"{s}\" to int at {path_str}"
+                ))
             }),
             Value::Bool(b) => Ok(Value::Int(if *b { 1 } else { 0 })),
             Value::Null => Ok(Value::Int(0)),
             _ => Err(error::MorphError::mapping(format!(
-                "cannot cast {value:?} to int"
+                "cannot cast {} to int at {path_str}: got {}, expected int-compatible type (int, float, string, bool, null)",
+                value_type_name(value),
+                value_preview(value),
             ))),
         },
         CastType::Float => match value {
             Value::Float(_) => Ok(value.clone()),
             Value::Int(i) => Ok(Value::Float(*i as f64)),
             Value::String(s) => s.parse::<f64>().map(Value::Float).map_err(|_| {
-                error::MorphError::mapping(format!("cannot cast string \"{s}\" to float"))
+                error::MorphError::mapping(format!(
+                    "cannot cast string \"{s}\" to float at {path_str}"
+                ))
             }),
             Value::Bool(b) => Ok(Value::Float(if *b { 1.0 } else { 0.0 })),
             Value::Null => Ok(Value::Float(0.0)),
             _ => Err(error::MorphError::mapping(format!(
-                "cannot cast {value:?} to float"
+                "cannot cast {} to float at {path_str}: got {}, expected float-compatible type (float, int, string, bool, null)",
+                value_type_name(value),
+                value_preview(value),
             ))),
         },
         CastType::String => match value {
@@ -161,7 +194,9 @@ fn cast_value(value: &Value, target_type: &CastType) -> error::Result<Value> {
             Value::Bool(b) => Ok(Value::String(b.to_string())),
             Value::Null => Ok(Value::String("null".to_string())),
             _ => Err(error::MorphError::mapping(format!(
-                "cannot cast {value:?} to string"
+                "cannot cast {} to string at {path_str}: got {}, expected string-compatible type (string, int, float, bool, null)",
+                value_type_name(value),
+                value_preview(value),
             ))),
         },
         CastType::Bool => match value {
@@ -172,12 +207,14 @@ fn cast_value(value: &Value, target_type: &CastType) -> error::Result<Value> {
                 "true" | "1" | "yes" => Ok(Value::Bool(true)),
                 "false" | "0" | "no" | "" => Ok(Value::Bool(false)),
                 _ => Err(error::MorphError::mapping(format!(
-                    "cannot cast string \"{s}\" to bool"
+                    "cannot cast string \"{s}\" to bool at {path_str}"
                 ))),
             },
             Value::Null => Ok(Value::Bool(false)),
             _ => Err(error::MorphError::mapping(format!(
-                "cannot cast {value:?} to bool"
+                "cannot cast {} to bool at {path_str}: got {}, expected bool-compatible type (bool, int, float, string, null)",
+                value_type_name(value),
+                value_preview(value),
             ))),
         },
     }

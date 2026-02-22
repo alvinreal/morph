@@ -1,10 +1,24 @@
 use crate::mapping::lexer::Span;
+use std::fmt;
 
 /// A field path like `.name`, `.users.[0].name`, or `.a.b.c`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Path {
     pub segments: Vec<PathSegment>,
     pub span: Span,
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for seg in &self.segments {
+            match seg {
+                PathSegment::Field(name) => write!(f, ".{name}")?,
+                PathSegment::Index(i) => write!(f, ".[{i}]")?,
+                PathSegment::Wildcard => write!(f, ".[*]")?,
+            }
+        }
+        Ok(())
+    }
 }
 
 /// A single segment in a field path.
