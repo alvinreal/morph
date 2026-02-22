@@ -846,4 +846,151 @@ mod cli_integration {
             .success()
             .stdout(predicate::str::contains(r#"{"a":1,"b":2}"#));
     }
+
+    // -- Format-specific CLI options -----------------------------------------
+
+    #[test]
+    fn cli_csv_delimiter_tab() {
+        let tsv = "name\tage\nAlice\t30\nBob\t25\n";
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "csv", "-t", "json", "--csv-delimiter", "\\t"])
+            .write_stdin(tsv)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Alice"))
+            .stdout(predicate::str::contains("30"));
+    }
+
+    #[test]
+    fn cli_csv_no_header() {
+        let csv_data = "Alice,30\nBob,25\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "csv", "-t", "json", "--csv-no-header", "--compact"])
+            .write_stdin(csv_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Should return arrays of arrays (no header keys)
+        assert!(stdout.contains("["), "expected array of arrays: {stdout}");
+        assert!(stdout.contains("\"Alice\""), "expected Alice: {stdout}");
+    }
+
+    #[test]
+    fn cli_csv_header_override() {
+        let csv_data = "old_a,old_b\nAlice,30\nBob,25\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args([
+                "-f",
+                "csv",
+                "-t",
+                "json",
+                "--csv-header",
+                "name,age",
+                "--compact",
+            ])
+            .write_stdin(csv_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Should use the overridden headers
+        assert!(stdout.contains("\"name\""), "expected 'name' key: {stdout}");
+        assert!(stdout.contains("\"age\""), "expected 'age' key: {stdout}");
+        assert!(
+            !stdout.contains("\"old_a\""),
+            "should not contain old header: {stdout}"
+        );
+    }
+
+    #[test]
+    fn cli_xml_root() {
+        let json_data = r#"{"name":"Alice"}"#;
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "xml", "--xml-root", "items"])
+            .write_stdin(json_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("<items>"), "expected <items>: {stdout}");
+        assert!(stdout.contains("</items>"), "expected </items>: {stdout}");
+    }
+
+    #[test]
+    fn cli_xml_attr_prefix() {
+        let xml_data = r#"<root><user id="1">Alice</user></root>"#;
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args([
+                "-f",
+                "xml",
+                "-t",
+                "json",
+                "--xml-attr-prefix",
+                "_",
+                "--compact",
+            ])
+            .write_stdin(xml_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"_id\""), "expected '_id' key: {stdout}");
+        assert!(
+            !stdout.contains("\"@id\""),
+            "should not contain '@id': {stdout}"
+        );
+    }
+
+    #[test]
+    fn cli_yaml_multi() {
+        let yaml_data = "---\nname: Alice\n---\nname: Bob\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "yaml", "-t", "json", "--yaml-multi", "--compact"])
+            .write_stdin(yaml_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // With --yaml-multi, even a single doc returns an array
+        assert!(stdout.contains("["), "expected array: {stdout}");
+        assert!(stdout.contains("Alice"), "expected Alice: {stdout}");
+        assert!(stdout.contains("Bob"), "expected Bob: {stdout}");
+    }
+
+    #[test]
+    fn cli_yaml_multi_single_doc() {
+        let yaml_data = "name: Alice\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "yaml", "-t", "json", "--yaml-multi", "--compact"])
+            .write_stdin(yaml_data)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // --yaml-multi forces array even with single doc
+        assert!(stdout.starts_with("["), "expected array wrapping: {stdout}");
+    }
+
+    #[test]
+    fn cli_format_options_ignored_when_unused() {
+        // XML options should not cause errors when converting JSON → JSON
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args([
+                "-f",
+                "json",
+                "-t",
+                "json",
+                "--xml-root",
+                "items",
+                "--csv-delimiter",
+                "\\t",
+                "--yaml-multi",
+            ])
+            .write_stdin(r#"{"a":1}"#)
+            .assert()
+            .success();
+    }
 }

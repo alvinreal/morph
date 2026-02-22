@@ -125,12 +125,63 @@ pub struct Cli {
     /// Parse and validate the mapping without executing
     #[arg(long = "dry-run")]
     pub dry_run: bool,
+
+    // -- Format-specific options --------------------------------------------
+    /// CSV field delimiter character (default: comma)
+    #[arg(long = "csv-delimiter")]
+    pub csv_delimiter: Option<String>,
+
+    /// Input CSV has no header row
+    #[arg(long = "csv-no-header")]
+    pub csv_no_header: bool,
+
+    /// Override CSV headers (comma-separated field names)
+    #[arg(long = "csv-header")]
+    pub csv_header: Option<String>,
+
+    /// Root element name for XML output (default: "root")
+    #[arg(long = "xml-root")]
+    pub xml_root: Option<String>,
+
+    /// Attribute prefix for XML (default: "@")
+    #[arg(long = "xml-attr-prefix")]
+    pub xml_attr_prefix: Option<String>,
+
+    /// Treat YAML input as multi-document (return array of documents)
+    #[arg(long = "yaml-multi")]
+    pub yaml_multi: bool,
 }
 
 impl Cli {
     /// Parse arguments from the command line.
     pub fn parse_args() -> Self {
         Cli::parse()
+    }
+
+    /// Build a CsvConfig from CLI flags.
+    pub fn csv_config(&self) -> crate::formats::csv::CsvConfig {
+        let mut config = crate::formats::csv::CsvConfig::default();
+        if let Some(ref delim) = self.csv_delimiter {
+            if let Some(ch) = parse_delimiter(delim) {
+                config.delimiter = ch;
+            }
+        }
+        if self.csv_no_header {
+            config.has_headers = false;
+        }
+        config
+    }
+
+    /// Build an XmlConfig from CLI flags.
+    pub fn xml_config(&self) -> crate::formats::xml::XmlConfig {
+        let mut config = crate::formats::xml::XmlConfig::default();
+        if let Some(ref root) = self.xml_root {
+            config.root_element = root.clone();
+        }
+        if let Some(ref prefix) = self.xml_attr_prefix {
+            config.attr_prefix = prefix.clone();
+        }
+        config
     }
 
     /// Resolve the input format from the `--from` flag or the input file extension.
@@ -194,13 +245,46 @@ pub fn read_input(cli: &Cli) -> crate::error::Result<String> {
 
 /// Parse input string according to format.
 pub fn parse_input(input: &str, format: Format) -> crate::error::Result<crate::value::Value> {
+    parse_input_with_cli(input, format, None)
+}
+
+/// Parse input string according to format, using CLI options for format-specific config.
+pub fn parse_input_with_cli(
+    input: &str,
+    format: Format,
+    cli: Option<&Cli>,
+) -> crate::error::Result<crate::value::Value> {
     match format {
         Format::Json => crate::formats::json::from_str(input),
         Format::Jsonl => crate::formats::jsonl::from_str(input),
-        Format::Yaml => crate::formats::yaml::from_str(input),
+        Format::Yaml => {
+            if cli.is_some_and(|c| c.yaml_multi) {
+                crate::formats::yaml::from_str_multi(input)
+            } else {
+                crate::formats::yaml::from_str(input)
+            }
+        }
         Format::Toml => crate::formats::toml::from_str(input),
-        Format::Csv => crate::formats::csv::from_str(input),
-        Format::Xml => crate::formats::xml::from_str(input),
+        Format::Csv => {
+            if let Some(c) = cli {
+                let config = c.csv_config();
+                if let Some(ref header_str) = c.csv_header {
+                    crate::formats::csv::from_str_with_explicit_headers(input, &config, header_str)
+                } else {
+                    crate::formats::csv::from_str_with_config(input, &config)
+                }
+            } else {
+                crate::formats::csv::from_str(input)
+            }
+        }
+        Format::Xml => {
+            if let Some(c) = cli {
+                let config = c.xml_config();
+                crate::formats::xml::from_str_with_config(input, &config)
+            } else {
+                crate::formats::xml::from_str(input)
+            }
+        }
         Format::Msgpack => crate::formats::msgpack::from_str(input),
     }
 }
@@ -210,6 +294,16 @@ pub fn serialize_output(
     value: &crate::value::Value,
     format: Format,
     pretty: bool,
+) -> crate::error::Result<String> {
+    serialize_output_with_cli(value, format, pretty, None)
+}
+
+/// Serialize a value to string according to format, using CLI options for format-specific config.
+pub fn serialize_output_with_cli(
+    value: &crate::value::Value,
+    format: Format,
+    pretty: bool,
+    cli: Option<&Cli>,
 ) -> crate::error::Result<String> {
     match format {
         Format::Json => {
@@ -222,8 +316,22 @@ pub fn serialize_output(
         Format::Jsonl => crate::formats::jsonl::to_string(value),
         Format::Yaml => crate::formats::yaml::to_string(value),
         Format::Toml => crate::formats::toml::to_string(value),
-        Format::Csv => crate::formats::csv::to_string(value),
-        Format::Xml => crate::formats::xml::to_string(value),
+        Format::Csv => {
+            if let Some(c) = cli {
+                let config = c.csv_config();
+                crate::formats::csv::to_string_with_config(value, &config)
+            } else {
+                crate::formats::csv::to_string(value)
+            }
+        }
+        Format::Xml => {
+            if let Some(c) = cli {
+                let config = c.xml_config();
+                crate::formats::xml::to_string_with_config(value, &config)
+            } else {
+                crate::formats::xml::to_string(value)
+            }
+        }
         Format::Msgpack => crate::formats::msgpack::to_string(value),
     }
 }
@@ -312,7 +420,7 @@ pub fn run(cli: &Cli) -> crate::error::Result<()> {
     let out_fmt = cli.resolve_output_format()?;
 
     let input_data = read_input(cli)?;
-    let value = parse_input(&input_data, in_fmt)?;
+    let value = parse_input_with_cli(&input_data, in_fmt, Some(cli))?;
 
     // Apply mapping if present
     let value = match mapping_program {
@@ -330,10 +438,21 @@ pub fn run(cli: &Cli) -> crate::error::Result<()> {
         cli.output.is_some() || atty_stdout()
     };
 
-    let output_data = serialize_output(&value, out_fmt, pretty)?;
+    let output_data = serialize_output_with_cli(&value, out_fmt, pretty, Some(cli))?;
     write_output(cli, &output_data)?;
 
     Ok(())
+}
+
+/// Parse a delimiter string from CLI into a byte.
+/// Handles escape sequences like `\t` for tab.
+fn parse_delimiter(s: &str) -> Option<u8> {
+    match s {
+        "\\t" | "tab" | "TAB" => Some(b'\t'),
+        "\\0" => Some(b'\0'),
+        s if s.len() == 1 => Some(s.as_bytes()[0]),
+        _ => None,
+    }
 }
 
 /// Check if stdout is a TTY (best-effort).

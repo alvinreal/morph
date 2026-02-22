@@ -91,6 +91,54 @@ pub fn to_string(value: &Value) -> error::Result<String> {
     to_string_with_config(value, &CsvConfig::default())
 }
 
+/// Parse CSV with explicit user-provided headers.
+///
+/// Ignores the first row of the input (if `config.has_headers` is true, it
+/// is treated as a header but replaced). If `config.has_headers` is false,
+/// all rows are treated as data rows.
+pub fn from_str_with_explicit_headers(
+    input: &str,
+    config: &CsvConfig,
+    header_str: &str,
+) -> error::Result<Value> {
+    let headers: Vec<String> = header_str
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    // Force no-headers mode so the CSV reader doesn't consume the first line
+    let mut no_header_config = config.clone();
+    no_header_config.has_headers = false;
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .delimiter(no_header_config.delimiter)
+        .flexible(no_header_config.flexible)
+        .from_reader(input.as_bytes());
+
+    let mut rows = Vec::new();
+    let mut first = true;
+    for result in rdr.records() {
+        let record = result?;
+        // If the original config had headers, skip the first row (it's the original header)
+        if first && config.has_headers {
+            first = false;
+            continue;
+        }
+        first = false;
+        let mut map = IndexMap::new();
+        for (i, field) in record.iter().enumerate() {
+            let key = headers
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| format!("column_{i}"));
+            map.insert(key, parse_csv_field(field));
+        }
+        rows.push(Value::Map(map));
+    }
+    Ok(Value::Array(rows))
+}
+
 /// Serialize a Universal Value to a CSV string with custom configuration.
 pub fn to_string_with_config(value: &Value, config: &CsvConfig) -> error::Result<String> {
     let rows = match value {
