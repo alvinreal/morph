@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::fmt;
 use std::path::PathBuf;
 
@@ -154,6 +154,14 @@ pub struct Cli {
     /// Enable streaming mode for large files (processes elements one at a time)
     #[arg(long = "stream")]
     pub stream: bool,
+
+    /// Generate shell completions for the given shell (bash, zsh, fish)
+    #[arg(long = "completions", value_name = "SHELL")]
+    pub completions: Option<String>,
+
+    /// List all built-in mapping functions with signatures
+    #[arg(long = "functions")]
+    pub functions: bool,
 }
 
 impl Cli {
@@ -395,11 +403,19 @@ pub fn build_mapping_program(
 
 /// Run the full pipeline based on CLI args.
 pub fn run(cli: &Cli) -> crate::error::Result<()> {
+    // --completions: generate shell completions and exit
+    if let Some(ref shell_name) = cli.completions {
+        generate_completions(shell_name)?;
+        return Ok(());
+    }
+
     if cli.formats {
-        println!("Supported formats:");
-        for (_, name, extensions) in Format::all() {
-            println!("  {name} (extensions: {})", extensions.join(", "));
-        }
+        print_formats();
+        return Ok(());
+    }
+
+    if cli.functions {
+        print_functions();
         return Ok(());
     }
 
@@ -468,6 +484,169 @@ fn parse_delimiter(s: &str) -> Option<u8> {
 fn atty_stdout() -> bool {
     use std::io::IsTerminal;
     std::io::stdout().is_terminal()
+}
+
+/// Generate shell completions for the given shell name.
+fn generate_completions(shell_name: &str) -> crate::error::Result<()> {
+    use clap_complete::{generate, Shell};
+
+    let shell = match shell_name.to_lowercase().as_str() {
+        "bash" => Shell::Bash,
+        "zsh" => Shell::Zsh,
+        "fish" => Shell::Fish,
+        "powershell" | "ps" => Shell::PowerShell,
+        "elvish" => Shell::Elvish,
+        _ => {
+            return Err(crate::error::MorphError::cli(format!(
+                "unknown shell: '{shell_name}'. Supported: bash, zsh, fish, powershell, elvish"
+            )));
+        }
+    };
+
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "morph", &mut std::io::stdout());
+    Ok(())
+}
+
+/// Print the list of supported formats with read/write status.
+fn print_formats() {
+    println!("Supported formats:");
+    println!();
+    println!("  {:<15} {:<12} CAPABILITIES", "FORMAT", "EXTENSIONS");
+    println!("  {:<15} {:<12} ────────────", "──────", "──────────");
+    for (_, name, extensions) in Format::all() {
+        println!("  {:<15} {:<12} read, write", name, extensions.join(", "));
+    }
+}
+
+/// A function entry: (signature, type_info, description).
+type FuncEntry = (&'static str, &'static str, &'static str);
+
+/// Print the list of built-in mapping functions with signatures.
+fn print_functions() {
+    println!("Built-in mapping functions:");
+    println!();
+
+    let categories: &[(&str, &[FuncEntry])] = &[
+        (
+            "String",
+            &[
+                ("lower(value)", "string → string", "Convert to lowercase"),
+                ("upper(value)", "string → string", "Convert to uppercase"),
+                ("trim(value)", "string → string", "Trim whitespace"),
+                (
+                    "trim_start(value)",
+                    "string → string",
+                    "Trim leading whitespace",
+                ),
+                (
+                    "trim_end(value)",
+                    "string → string",
+                    "Trim trailing whitespace",
+                ),
+                (
+                    "len(value)",
+                    "string|array|map → int",
+                    "Length/size of value",
+                ),
+                (
+                    "replace(value, from, to)",
+                    "string → string",
+                    "Replace occurrences",
+                ),
+                (
+                    "contains(value, search)",
+                    "string → bool",
+                    "Check if string contains substring",
+                ),
+                (
+                    "starts_with(value, prefix)",
+                    "string → bool",
+                    "Check if string starts with prefix",
+                ),
+                (
+                    "ends_with(value, suffix)",
+                    "string → bool",
+                    "Check if string ends with suffix",
+                ),
+                (
+                    "substr(value, start, [len])",
+                    "string → string",
+                    "Extract substring",
+                ),
+                ("concat(a, b, ...)", "any → string", "Concatenate values"),
+                ("split(value, sep)", "string → array", "Split by separator"),
+                ("join(array, sep)", "array → string", "Join with separator"),
+                (
+                    "reverse(value)",
+                    "string|array → same",
+                    "Reverse string or array",
+                ),
+            ],
+        ),
+        (
+            "Type conversion",
+            &[
+                ("to_int(value)", "any → int", "Convert to integer"),
+                ("to_float(value)", "any → float", "Convert to float"),
+                ("to_string(value)", "any → string", "Convert to string"),
+                ("to_bool(value)", "any → bool", "Convert to boolean"),
+                ("type_of(value)", "any → string", "Get type name"),
+            ],
+        ),
+        (
+            "Math",
+            &[
+                ("abs(value)", "number → number", "Absolute value"),
+                ("min(a, b)", "number → number", "Minimum of two values"),
+                ("max(a, b)", "number → number", "Maximum of two values"),
+                ("floor(value)", "float → int", "Round down"),
+                ("ceil(value)", "float → int", "Round up"),
+                ("round(value)", "float → int", "Round to nearest"),
+            ],
+        ),
+        (
+            "Null / existence",
+            &[
+                ("is_null(value)", "any → bool", "Check if null"),
+                ("is_array(value)", "any → bool", "Check if array"),
+                ("coalesce(a, b, ...)", "any → any", "First non-null value"),
+                ("default(value, fallback)", "any → any", "Fallback if null"),
+            ],
+        ),
+        (
+            "Collection",
+            &[
+                ("keys(map)", "map → array", "Get map keys"),
+                ("values(map)", "map → array", "Get map values"),
+                ("unique(array)", "array → array", "Remove duplicate values"),
+                ("first(array)", "array → any", "First element"),
+                ("last(array)", "array → any", "Last element"),
+                ("sum(array)", "array → number", "Sum of numbers"),
+                (
+                    "group_by(array, key)",
+                    "array → map",
+                    "Group array elements by key",
+                ),
+            ],
+        ),
+        (
+            "Conditional",
+            &[(
+                "if(cond, then, else)",
+                "any → any",
+                "Conditional expression",
+            )],
+        ),
+    ];
+
+    for (category, funcs) in categories {
+        println!("  {category}:");
+        for (signature, types, description) in *funcs {
+            println!("    {:<30} {:<25} {}", signature, types, description);
+        }
+        println!();
+    }
 }
 
 #[cfg(test)]

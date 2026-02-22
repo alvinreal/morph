@@ -1112,4 +1112,92 @@ mod cli_integration {
             .assert()
             .success();
     }
+
+    // -- Shell completions and help commands ---------------------------------
+
+    #[test]
+    fn cli_completions_bash() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--completions", "bash"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("morph"));
+    }
+
+    #[test]
+    fn cli_completions_zsh() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--completions", "zsh"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("morph"));
+    }
+
+    #[test]
+    fn cli_completions_fish() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--completions", "fish"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("morph"));
+    }
+
+    #[test]
+    fn cli_completions_unknown_shell() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--completions", "tcsh"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("unknown shell"));
+    }
+
+    #[test]
+    fn cli_formats_list_with_capabilities() {
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--formats"])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("JSON"), "expected JSON: {stdout}");
+        assert!(stdout.contains("YAML"), "expected YAML: {stdout}");
+        assert!(stdout.contains("CSV"), "expected CSV: {stdout}");
+        assert!(stdout.contains("XML"), "expected XML: {stdout}");
+        assert!(
+            stdout.contains("MessagePack"),
+            "expected MessagePack: {stdout}"
+        );
+        assert!(
+            stdout.contains("read, write"),
+            "expected capabilities: {stdout}"
+        );
+    }
+
+    #[test]
+    fn cli_functions_list() {
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["--functions"])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("lower(value)"), "expected lower: {stdout}");
+        assert!(stdout.contains("upper(value)"), "expected upper: {stdout}");
+        assert!(stdout.contains("trim("), "expected trim: {stdout}");
+        assert!(stdout.contains("to_int("), "expected to_int: {stdout}");
+        assert!(stdout.contains("keys("), "expected keys: {stdout}");
+        assert!(stdout.contains("if("), "expected if: {stdout}");
+        assert!(
+            stdout.contains("String:"),
+            "expected String category: {stdout}"
+        );
+        assert!(
+            stdout.contains("Collection:"),
+            "expected Collection category: {stdout}"
+        );
+    }
 }
