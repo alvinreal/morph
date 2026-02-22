@@ -110,6 +110,18 @@ pub enum Statement {
     Where { condition: Expr, span: Span },
     /// `sort .field asc, .field2 desc` — sort array elements
     Sort { keys: Vec<SortKey>, span: Span },
+    /// `each .path { ... }` — apply block to each array element
+    Each {
+        path: Path,
+        body: Vec<Statement>,
+        span: Span,
+    },
+    /// `when <condition> { ... }` — conditional block
+    When {
+        condition: Expr,
+        body: Vec<Statement>,
+        span: Span,
+    },
 }
 
 /// A sort direction.
