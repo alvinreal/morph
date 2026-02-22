@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Json,
+    Jsonl,
     Yaml,
     Toml,
     Csv,
@@ -17,6 +18,7 @@ impl Format {
     pub fn all() -> &'static [(Format, &'static str, &'static [&'static str])] {
         &[
             (Format::Json, "JSON", &["json"]),
+            (Format::Jsonl, "JSONL", &["jsonl", "ndjson"]),
             (Format::Yaml, "YAML", &["yaml", "yml"]),
             (Format::Toml, "TOML", &["toml"]),
             (Format::Csv, "CSV", &["csv"]),
@@ -28,6 +30,7 @@ impl Format {
     pub fn from_extension(ext: &str) -> Option<Format> {
         match ext.to_lowercase().as_str() {
             "json" => Some(Format::Json),
+            "jsonl" | "ndjson" => Some(Format::Jsonl),
             "yaml" | "yml" => Some(Format::Yaml),
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
@@ -47,6 +50,7 @@ impl Format {
     pub fn from_name(name: &str) -> Option<Format> {
         match name.to_lowercase().as_str() {
             "json" => Some(Format::Json),
+            "jsonl" | "ndjson" => Some(Format::Jsonl),
             "yaml" | "yml" => Some(Format::Yaml),
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
@@ -60,6 +64,7 @@ impl fmt::Display for Format {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Format::Json => write!(f, "json"),
+            Format::Jsonl => write!(f, "jsonl"),
             Format::Yaml => write!(f, "yaml"),
             Format::Toml => write!(f, "toml"),
             Format::Csv => write!(f, "csv"),
@@ -186,6 +191,7 @@ pub fn read_input(cli: &Cli) -> crate::error::Result<String> {
 pub fn parse_input(input: &str, format: Format) -> crate::error::Result<crate::value::Value> {
     match format {
         Format::Json => crate::formats::json::from_str(input),
+        Format::Jsonl => crate::formats::jsonl::from_str(input),
         Format::Yaml => crate::formats::yaml::from_str(input),
         Format::Toml => crate::formats::toml::from_str(input),
         Format::Csv => crate::formats::csv::from_str(input),
@@ -207,6 +213,7 @@ pub fn serialize_output(
                 crate::formats::json::to_string(value)
             }
         }
+        Format::Jsonl => crate::formats::jsonl::to_string(value),
         Format::Yaml => crate::formats::yaml::to_string(value),
         Format::Toml => crate::formats::toml::to_string(value),
         Format::Csv => crate::formats::csv::to_string(value),
@@ -366,6 +373,12 @@ mod tests {
     }
 
     #[test]
+    fn format_from_extension_jsonl() {
+        assert_eq!(Format::from_extension("jsonl"), Some(Format::Jsonl));
+        assert_eq!(Format::from_extension("ndjson"), Some(Format::Jsonl));
+    }
+
+    #[test]
     fn format_from_path_json() {
         let p = PathBuf::from("data.json");
         assert_eq!(Format::from_path(&p), Some(Format::Json));
@@ -388,6 +401,8 @@ mod tests {
         assert_eq!(Format::from_name("toml"), Some(Format::Toml));
         assert_eq!(Format::from_name("csv"), Some(Format::Csv));
         assert_eq!(Format::from_name("xml"), Some(Format::Xml));
+        assert_eq!(Format::from_name("jsonl"), Some(Format::Jsonl));
+        assert_eq!(Format::from_name("ndjson"), Some(Format::Jsonl));
         assert_eq!(Format::from_name("nope"), None);
     }
 
@@ -498,6 +513,7 @@ mod tests {
     #[test]
     fn format_display() {
         assert_eq!(Format::Json.to_string(), "json");
+        assert_eq!(Format::Jsonl.to_string(), "jsonl");
         assert_eq!(Format::Yaml.to_string(), "yaml");
         assert_eq!(Format::Toml.to_string(), "toml");
         assert_eq!(Format::Csv.to_string(), "csv");
