@@ -993,4 +993,123 @@ mod cli_integration {
             .assert()
             .success();
     }
+
+    // -- Streaming CLI tests ------------------------------------------------
+
+    #[test]
+    fn cli_stream_jsonl_to_json() {
+        let input = "{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "jsonl", "-t", "json", "--stream"])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert!(parsed.is_array(), "expected JSON array: {stdout}");
+        assert_eq!(parsed.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn cli_stream_csv_to_jsonl() {
+        let input = "name,age\nAlice,30\nBob,25\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "csv", "-t", "jsonl", "--stream"])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.trim().lines().collect();
+        assert_eq!(lines.len(), 2, "expected 2 JSONL lines: {stdout}");
+        assert!(stdout.contains("\"Alice\""), "expected Alice: {stdout}");
+    }
+
+    #[test]
+    fn cli_stream_json_to_jsonl() {
+        let input = r#"[{"a":1},{"a":2},{"a":3}]"#;
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "jsonl", "--stream"])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.trim().lines().collect();
+        assert_eq!(lines.len(), 3, "expected 3 JSONL lines: {stdout}");
+    }
+
+    #[test]
+    fn cli_stream_jsonl_to_csv() {
+        let input = "{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "jsonl", "-t", "csv", "--stream"])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("name"), "expected header: {stdout}");
+        assert!(stdout.contains("Alice"), "expected Alice: {stdout}");
+        assert!(stdout.contains("Bob"), "expected Bob: {stdout}");
+    }
+
+    #[test]
+    fn cli_stream_with_mapping() {
+        let input = "{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args([
+                "-f",
+                "jsonl",
+                "-t",
+                "jsonl",
+                "--stream",
+                "-e",
+                "select .name",
+            ])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"name\""), "expected name: {stdout}");
+        assert!(
+            !stdout.contains("\"age\""),
+            "age should be dropped: {stdout}"
+        );
+    }
+
+    #[test]
+    fn cli_stream_csv_with_delimiter() {
+        let input = "name\tage\nAlice\t30\nBob\t25\n";
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args([
+                "-f",
+                "csv",
+                "-t",
+                "jsonl",
+                "--stream",
+                "--csv-delimiter",
+                "\\t",
+            ])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"Alice\""), "expected Alice: {stdout}");
+        assert!(stdout.contains("\"name\""), "expected name key: {stdout}");
+    }
+
+    #[test]
+    fn cli_stream_flag_ignored_for_unsupported_formats() {
+        // YAML→JSON with --stream should still work (falls back to non-streaming)
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "yaml", "-t", "json", "--stream"])
+            .write_stdin("name: Alice\nage: 30\n")
+            .assert()
+            .success();
+    }
 }
