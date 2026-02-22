@@ -595,6 +595,11 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(Value::String(s)))
             }
+            Some(TokenKind::InterpolatedString(ref parts)) => {
+                let parts = parts.clone();
+                self.advance();
+                self.parse_interpolated_string(&parts)
+            }
             Some(TokenKind::True) => {
                 self.advance();
                 Ok(Expr::Literal(Value::Bool(true)))
@@ -660,6 +665,35 @@ impl Parser {
                 ))
             }
         }
+    }
+
+    fn parse_interpolated_string(
+        &mut self,
+        parts: &[crate::mapping::lexer::InterpolatedPart],
+    ) -> error::Result<Expr> {
+        use crate::mapping::ast::{Expr as AstExpr, InterpolationPart};
+        use crate::mapping::lexer::InterpolatedPart as LexPart;
+
+        let mut ast_parts = Vec::new();
+        for part in parts {
+            match part {
+                LexPart::Literal(s) => {
+                    ast_parts.push(InterpolationPart::Literal(s.clone()));
+                }
+                LexPart::Expression(expr_str) => {
+                    let sub_program =
+                        crate::mapping::parser::parse_str(&format!("set .x = {expr_str}"))?;
+                    if let Some(Statement::Set { expr, .. }) = sub_program.statements.first() {
+                        ast_parts.push(InterpolationPart::Expr(expr.clone()));
+                    } else {
+                        return Err(error::MorphError::mapping(
+                            "invalid expression in string interpolation",
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(AstExpr::StringInterpolation { parts: ast_parts })
     }
 
     fn parse_arg_list(&mut self) -> error::Result<Vec<Expr>> {
