@@ -819,7 +819,7 @@ mod cli_integration {
     fn cli_unknown_format_error() {
         Command::cargo_bin("morph")
             .unwrap()
-            .args(["-f", "xml", "-t", "json"])
+            .args(["-f", "protobuf", "-t", "json"])
             .write_stdin("{}")
             .assert()
             .failure();

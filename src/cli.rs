@@ -9,6 +9,7 @@ pub enum Format {
     Yaml,
     Toml,
     Csv,
+    Xml,
 }
 
 impl Format {
@@ -19,6 +20,7 @@ impl Format {
             (Format::Yaml, "YAML", &["yaml", "yml"]),
             (Format::Toml, "TOML", &["toml"]),
             (Format::Csv, "CSV", &["csv"]),
+            (Format::Xml, "XML", &["xml"]),
         ]
     }
 
@@ -29,6 +31,7 @@ impl Format {
             "yaml" | "yml" => Some(Format::Yaml),
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
+            "xml" => Some(Format::Xml),
             _ => None,
         }
     }
@@ -47,6 +50,7 @@ impl Format {
             "yaml" | "yml" => Some(Format::Yaml),
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
+            "xml" => Some(Format::Xml),
             _ => None,
         }
     }
@@ -59,6 +63,7 @@ impl fmt::Display for Format {
             Format::Yaml => write!(f, "yaml"),
             Format::Toml => write!(f, "toml"),
             Format::Csv => write!(f, "csv"),
+            Format::Xml => write!(f, "xml"),
         }
     }
 }
@@ -184,6 +189,7 @@ pub fn parse_input(input: &str, format: Format) -> crate::error::Result<crate::v
         Format::Yaml => crate::formats::yaml::from_str(input),
         Format::Toml => crate::formats::toml::from_str(input),
         Format::Csv => crate::formats::csv::from_str(input),
+        Format::Xml => crate::formats::xml::from_str(input),
     }
 }
 
@@ -204,6 +210,7 @@ pub fn serialize_output(
         Format::Yaml => crate::formats::yaml::to_string(value),
         Format::Toml => crate::formats::toml::to_string(value),
         Format::Csv => crate::formats::csv::to_string(value),
+        Format::Xml => crate::formats::xml::to_string(value),
     }
 }
 
@@ -354,6 +361,11 @@ mod tests {
     }
 
     #[test]
+    fn format_from_extension_xml() {
+        assert_eq!(Format::from_extension("xml"), Some(Format::Xml));
+    }
+
+    #[test]
     fn format_from_path_json() {
         let p = PathBuf::from("data.json");
         assert_eq!(Format::from_path(&p), Some(Format::Json));
@@ -375,7 +387,8 @@ mod tests {
         assert_eq!(Format::from_name("yaml"), Some(Format::Yaml));
         assert_eq!(Format::from_name("toml"), Some(Format::Toml));
         assert_eq!(Format::from_name("csv"), Some(Format::Csv));
-        assert_eq!(Format::from_name("xml"), None);
+        assert_eq!(Format::from_name("xml"), Some(Format::Xml));
+        assert_eq!(Format::from_name("nope"), None);
     }
 
     // -- Arg parsing --------------------------------------------------------
@@ -488,6 +501,7 @@ mod tests {
         assert_eq!(Format::Yaml.to_string(), "yaml");
         assert_eq!(Format::Toml.to_string(), "toml");
         assert_eq!(Format::Csv.to_string(), "csv");
+        assert_eq!(Format::Xml.to_string(), "xml");
     }
 
     // -- Mapping CLI flags --------------------------------------------------
