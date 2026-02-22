@@ -24,6 +24,20 @@ pub fn from_str(input: &str) -> error::Result<Value> {
     }
 }
 
+/// Parse a YAML string forcing multi-document mode.
+///
+/// Always returns an array of documents, even if there is only one.
+pub fn from_str_multi(input: &str) -> error::Result<Value> {
+    let docs: Vec<Value> = serde_yaml::Deserializer::from_str(input)
+        .map(|de| {
+            let yaml_val = serde_yaml::Value::deserialize(de).map_err(error::MorphError::from)?;
+            Ok(yaml_to_value(yaml_val))
+        })
+        .collect::<error::Result<Vec<Value>>>()?;
+
+    Ok(Value::Array(docs))
+}
+
 /// Parse YAML from a reader into a Universal Value.
 pub fn from_reader<R: Read>(mut reader: R) -> error::Result<Value> {
     let mut buf = String::new();
