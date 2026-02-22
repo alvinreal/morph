@@ -150,6 +150,10 @@ pub struct Cli {
     /// Treat YAML input as multi-document (return array of documents)
     #[arg(long = "yaml-multi")]
     pub yaml_multi: bool,
+
+    /// Enable streaming mode for large files (processes elements one at a time)
+    #[arg(long = "stream")]
+    pub stream: bool,
 }
 
 impl Cli {
@@ -418,6 +422,11 @@ pub fn run(cli: &Cli) -> crate::error::Result<()> {
 
     let in_fmt = cli.resolve_input_format()?;
     let out_fmt = cli.resolve_output_format()?;
+
+    // Streaming mode: process elements one at a time for large files
+    if cli.stream && crate::streaming::can_stream(in_fmt, out_fmt) {
+        return crate::streaming::run_streaming(cli, in_fmt, out_fmt, mapping_program.as_ref());
+    }
 
     let input_data = read_input(cli)?;
     let value = parse_input_with_cli(&input_data, in_fmt, Some(cli))?;
