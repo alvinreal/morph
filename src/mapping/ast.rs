@@ -73,6 +73,15 @@ pub enum Expr {
     },
     /// A unary operation: `not .active`, `-.value`.
     UnaryOp { op: UnaryOp, expr: Box<Expr> },
+    /// A string interpolation: `"Hello, {.name}!"`
+    StringInterpolation { parts: Vec<InterpolationPart> },
+}
+
+/// A part of an interpolated string.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolationPart {
+    Literal(String),
+    Expr(Expr),
 }
 
 /// A statement in the mapping language.

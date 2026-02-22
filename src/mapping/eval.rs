@@ -404,6 +404,19 @@ fn eval_expr(expr: &Expr, context: &Value) -> error::Result<Value> {
             let val = eval_expr(expr, context)?;
             eval_unary_op(*op, &val)
         }
+        Expr::StringInterpolation { parts } => {
+            let mut result = String::new();
+            for part in parts {
+                match part {
+                    crate::mapping::ast::InterpolationPart::Literal(s) => result.push_str(s),
+                    crate::mapping::ast::InterpolationPart::Expr(expr) => {
+                        let val = eval_expr(expr, context)?;
+                        result.push_str(&functions::to_str(&val));
+                    }
+                }
+            }
+            Ok(Value::String(result))
+        }
     }
 }
 

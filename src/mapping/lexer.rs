@@ -64,6 +64,7 @@ pub enum TokenKind {
     Dot,      // .
 
     // Literals
+    InterpolatedString(Vec<InterpolatedPart>),
     StringLit(String),
     IntLit(i64),
     FloatLit(f64),
@@ -76,6 +77,13 @@ pub enum TokenKind {
 
     // Newline (significant as statement separator)
     Newline,
+}
+
+/// Part of an interpolated string token.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolatedPart {
+    Literal(String),
+    Expression(String),
 }
 
 /// A token with its position in the source.
@@ -371,9 +379,12 @@ impl<'a> Lexer<'a> {
         let span = self.span();
         self.advance(); // skip opening "
 
-        let mut s = String::new();
+        let mut parts: Vec<InterpolatedPart> = Vec::new();
+        let mut current_literal = String::new();
+        let mut has_interpolation = false;
+
         loop {
-            match self.advance() {
+            match self.peek() {
                 None => {
                     return Err(error::MorphError::mapping_at(
                         "unterminated string literal",
@@ -381,14 +392,77 @@ impl<'a> Lexer<'a> {
                         span.column,
                     ));
                 }
-                Some(b'"') => break,
+                Some(b'"') => {
+                    self.advance();
+                    break;
+                }
+                Some(b'{') => {
+                    // Check if this is an interpolation
+                    has_interpolation = true;
+                    self.advance(); // consume '{'
+                    if !current_literal.is_empty() {
+                        parts.push(InterpolatedPart::Literal(std::mem::take(
+                            &mut current_literal,
+                        )));
+                    }
+                    let mut expr_str = String::new();
+                    let mut depth = 1;
+                    loop {
+                        match self.advance() {
+                            None => {
+                                return Err(error::MorphError::mapping_at(
+                                    "unterminated interpolation in string",
+                                    span.line,
+                                    span.column,
+                                ));
+                            }
+                            Some(b'{') => {
+                                depth += 1;
+                                expr_str.push('{');
+                            }
+                            Some(b'}') => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                                expr_str.push('}');
+                            }
+                            Some(c) => {
+                                if c < 0x80 {
+                                    expr_str.push(c as char);
+                                } else {
+                                    self.pos -= 1;
+                                    self.column -= 1;
+                                    let remaining = &self.input[self.pos..];
+                                    let remaining_str =
+                                        std::str::from_utf8(remaining).map_err(|_| {
+                                            error::MorphError::mapping_at(
+                                                "invalid UTF-8 in string",
+                                                self.line,
+                                                self.column,
+                                            )
+                                        })?;
+                                    let ch = remaining_str.chars().next().unwrap();
+                                    expr_str.push(ch);
+                                    let len = ch.len_utf8();
+                                    for _ in 0..len {
+                                        self.advance();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    parts.push(InterpolatedPart::Expression(expr_str));
+                }
                 Some(b'\\') => {
+                    self.advance(); // consume backslash
                     match self.advance() {
-                        Some(b'"') => s.push('"'),
-                        Some(b'\\') => s.push('\\'),
-                        Some(b'n') => s.push('\n'),
-                        Some(b't') => s.push('\t'),
-                        Some(b'r') => s.push('\r'),
+                        Some(b'"') => current_literal.push('"'),
+                        Some(b'\\') => current_literal.push('\\'),
+                        Some(b'n') => current_literal.push('\n'),
+                        Some(b't') => current_literal.push('\t'),
+                        Some(b'r') => current_literal.push('\r'),
+                        Some(b'{') => current_literal.push('{'),
                         Some(b'u') => {
                             // Unicode escape: \uXXXX
                             let mut hex = String::with_capacity(4);
@@ -406,7 +480,7 @@ impl<'a> Lexer<'a> {
                             }
                             let code = u32::from_str_radix(&hex, 16).unwrap();
                             match char::from_u32(code) {
-                                Some(c) => s.push(c),
+                                Some(c) => current_literal.push(c),
                                 None => {
                                     return Err(error::MorphError::mapping_at(
                                         format!("invalid unicode code point: \\u{hex}"),
@@ -433,9 +507,10 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Some(c) => {
+                    self.advance();
                     // Handle multi-byte UTF-8
                     if c < 0x80 {
-                        s.push(c as char);
+                        current_literal.push(c as char);
                     } else {
                         // Rewind one byte and read the full UTF-8 character
                         self.pos -= 1;
@@ -449,7 +524,7 @@ impl<'a> Lexer<'a> {
                             )
                         })?;
                         let ch = remaining_str.chars().next().unwrap();
-                        s.push(ch);
+                        current_literal.push(ch);
                         let len = ch.len_utf8();
                         for _ in 0..len {
                             self.advance();
@@ -459,7 +534,14 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(Token::new(TokenKind::StringLit(s), span))
+        if has_interpolation {
+            if !current_literal.is_empty() {
+                parts.push(InterpolatedPart::Literal(current_literal));
+            }
+            Ok(Token::new(TokenKind::InterpolatedString(parts), span))
+        } else {
+            Ok(Token::new(TokenKind::StringLit(current_literal), span))
+        }
     }
 
     fn read_number(&mut self, span: Span, negative: bool) -> error::Result<Token> {

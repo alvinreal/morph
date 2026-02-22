@@ -38,8 +38,21 @@ pub fn call_function(name: &str, args: &[Value]) -> error::Result<Value> {
 
         // Null / existence
         "is_null" => fn_is_null(args),
+        "is_array" => fn_is_array(args),
         "coalesce" => fn_coalesce(args),
         "default" => fn_default(args),
+
+        // Collection functions
+        "keys" => fn_keys(args),
+        "values" => fn_values(args),
+        "unique" => fn_unique(args),
+        "first" => fn_first(args),
+        "last" => fn_last(args),
+        "sum" => fn_sum(args),
+        "group_by" | "groupby" => fn_group_by(args),
+
+        // Conditional
+        "if" => fn_if(args),
 
         _ => Err(error::MorphError::mapping(format!(
             "unknown function: {name}"
@@ -71,7 +84,7 @@ fn expect_min_args(name: &str, args: &[Value], min: usize) -> error::Result<()> 
     Ok(())
 }
 
-fn to_str(value: &Value) -> String {
+pub fn to_str(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Int(i) => i.to_string(),
@@ -408,6 +421,163 @@ fn fn_default(args: &[Value]) -> error::Result<Value> {
     } else {
         Ok(args[0].clone())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Collection functions
+// ---------------------------------------------------------------------------
+
+fn fn_keys(args: &[Value]) -> error::Result<Value> {
+    expect_args("keys", args, 1)?;
+    match &args[0] {
+        Value::Map(m) => Ok(Value::Array(
+            m.keys().map(|k| Value::String(k.clone())).collect(),
+        )),
+        _ => Err(error::MorphError::mapping("keys() expects a map")),
+    }
+}
+
+fn fn_values(args: &[Value]) -> error::Result<Value> {
+    expect_args("values", args, 1)?;
+    match &args[0] {
+        Value::Map(m) => Ok(Value::Array(m.values().cloned().collect())),
+        _ => Err(error::MorphError::mapping("values() expects a map")),
+    }
+}
+
+fn fn_unique(args: &[Value]) -> error::Result<Value> {
+    expect_args("unique", args, 1)?;
+    match &args[0] {
+        Value::Array(arr) => {
+            let mut seen = Vec::new();
+            for item in arr {
+                if !seen.contains(item) {
+                    seen.push(item.clone());
+                }
+            }
+            Ok(Value::Array(seen))
+        }
+        _ => Err(error::MorphError::mapping("unique() expects an array")),
+    }
+}
+
+fn fn_first(args: &[Value]) -> error::Result<Value> {
+    expect_args("first", args, 1)?;
+    match &args[0] {
+        Value::Array(arr) => Ok(arr.first().cloned().unwrap_or(Value::Null)),
+        _ => Err(error::MorphError::mapping("first() expects an array")),
+    }
+}
+
+fn fn_last(args: &[Value]) -> error::Result<Value> {
+    expect_args("last", args, 1)?;
+    match &args[0] {
+        Value::Array(arr) => Ok(arr.last().cloned().unwrap_or(Value::Null)),
+        _ => Err(error::MorphError::mapping("last() expects an array")),
+    }
+}
+
+fn fn_sum(args: &[Value]) -> error::Result<Value> {
+    expect_args("sum", args, 1)?;
+    match &args[0] {
+        Value::Array(arr) => {
+            let mut int_sum: i64 = 0;
+            let mut is_float = false;
+            let mut float_sum: f64 = 0.0;
+            for item in arr {
+                match item {
+                    Value::Int(i) => {
+                        int_sum += i;
+                        float_sum += *i as f64;
+                    }
+                    Value::Float(f) => {
+                        is_float = true;
+                        float_sum += f;
+                    }
+                    _ => {
+                        return Err(error::MorphError::mapping(
+                            "sum() array must contain only numbers",
+                        ));
+                    }
+                }
+            }
+            if is_float {
+                Ok(Value::Float(float_sum))
+            } else {
+                Ok(Value::Int(int_sum))
+            }
+        }
+        _ => Err(error::MorphError::mapping("sum() expects an array")),
+    }
+}
+
+fn fn_group_by(args: &[Value]) -> error::Result<Value> {
+    expect_args("group_by", args, 2)?;
+    let arr = match &args[0] {
+        Value::Array(a) => a,
+        _ => {
+            return Err(error::MorphError::mapping(
+                "group_by() first argument must be an array",
+            ));
+        }
+    };
+    let key_field = match &args[1] {
+        Value::String(s) => s.clone(),
+        _ => {
+            return Err(error::MorphError::mapping(
+                "group_by() second argument must be a string field name",
+            ));
+        }
+    };
+
+    let mut groups: indexmap::IndexMap<String, Vec<Value>> = indexmap::IndexMap::new();
+    for item in arr {
+        let key_val = match item {
+            Value::Map(m) => m.get(&key_field).cloned().unwrap_or(Value::Null),
+            _ => Value::Null,
+        };
+        let key_str = to_str(&key_val);
+        groups.entry(key_str).or_default().push(item.clone());
+    }
+
+    let mut result = indexmap::IndexMap::new();
+    for (key, values) in groups {
+        result.insert(key, Value::Array(values));
+    }
+    Ok(Value::Map(result))
+}
+
+// ---------------------------------------------------------------------------
+// Conditional functions
+// ---------------------------------------------------------------------------
+
+fn fn_if(args: &[Value]) -> error::Result<Value> {
+    expect_args("if", args, 3)?;
+    let condition = &args[0];
+    let is_truthy = match condition {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Int(i) => *i != 0,
+        Value::Float(f) => *f != 0.0,
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Map(m) => !m.is_empty(),
+        Value::Bytes(b) => !b.is_empty(),
+    };
+    if is_truthy {
+        Ok(args[1].clone())
+    } else {
+        Ok(args[2].clone())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Null / existence functions
+// ---------------------------------------------------------------------------
+
+fn fn_is_array(args: &[Value]) -> error::Result<Value> {
+    expect_args("is_array", args, 1)?;
+    Ok(Value::Bool(matches!(&args[0], Value::Array(_))))
 }
 
 #[cfg(test)]
