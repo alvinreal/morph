@@ -54,9 +54,13 @@ pub fn call_function(name: &str, args: &[Value]) -> error::Result<Value> {
         // Conditional
         "if" => fn_if(args),
 
-        _ => Err(error::MorphError::mapping(format!(
-            "unknown function: {name}"
-        ))),
+        _ => {
+            let mut msg = format!("unknown function: {name}");
+            if let Some(suggestion) = crate::error::suggest_function(name) {
+                msg.push_str(&format!(". Did you mean '{suggestion}'?"));
+            }
+            Err(error::MorphError::mapping(msg))
+        }
     }
 }
 

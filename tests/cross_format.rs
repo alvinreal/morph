@@ -1200,4 +1200,90 @@ mod cli_integration {
             "expected Collection category: {stdout}"
         );
     }
+
+    // -- Error UX tests ------------------------------------------------------
+
+    #[test]
+    fn cli_unknown_format_suggests_json() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "jsn", "-t", "json"])
+            .write_stdin("{}")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Did you mean 'json'"));
+    }
+
+    #[test]
+    fn cli_unknown_format_suggests_yaml() {
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "ymal"])
+            .write_stdin("{}")
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(
+            stderr.contains("Did you mean 'yaml'") || stderr.contains("Did you mean 'yml'"),
+            "expected yaml/yml suggestion: {stderr}"
+        );
+    }
+
+    #[test]
+    fn cli_unknown_function_suggests_lower() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "json", "-e", "set .x = lowr(.x)"])
+            .write_stdin(r#"{"x":"HELLO"}"#)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Did you mean 'lower'"));
+    }
+
+    #[test]
+    fn cli_parse_error_includes_location() {
+        // Invalid JSON should report line/column info
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "json"])
+            .write_stdin("{ invalid }")
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        // Should show some form of error location or message
+        assert!(
+            stderr.contains("line") || stderr.contains("error"),
+            "expected error info: {stderr}"
+        );
+    }
+
+    #[test]
+    fn cli_file_not_found_includes_path() {
+        Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-i", "/tmp/nonexistent_morph_test_file.json", "-t", "json"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "/tmp/nonexistent_morph_test_file.json",
+            ));
+    }
+
+    #[test]
+    fn cli_cast_error_includes_type_info() {
+        let output = Command::cargo_bin("morph")
+            .unwrap()
+            .args(["-f", "json", "-t", "json", "-e", "cast .items as int"])
+            .write_stdin(r#"{"items":[1,2,3]}"#)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(
+            stderr.contains("array") || stderr.contains("cast"),
+            "expected type info: {stderr}"
+        );
+    }
 }
