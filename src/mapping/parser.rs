@@ -101,6 +101,8 @@ impl Parser {
             TokenKind::Nest => self.parse_nest(),
             TokenKind::Where => self.parse_where(),
             TokenKind::Sort => self.parse_sort(),
+            TokenKind::Each => self.parse_each(),
+            TokenKind::When => self.parse_when(),
             _ => {
                 let suggestion = suggest_keyword(&token.kind);
                 let msg = if let Some(s) = suggestion {
@@ -320,6 +322,49 @@ impl Parser {
             }
             _ => SortDirection::Asc, // default ascending
         }
+    }
+
+    fn parse_each(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'each'
+        let path = self.parse_path()?;
+        let body = self.parse_block()?;
+        Ok(Statement::Each {
+            path,
+            body,
+            span: start.span,
+        })
+    }
+
+    fn parse_when(&mut self) -> error::Result<Statement> {
+        let start = self.advance().unwrap(); // consume 'when'
+        let condition = self.parse_expr()?;
+        let body = self.parse_block()?;
+        Ok(Statement::When {
+            condition,
+            body,
+            span: start.span,
+        })
+    }
+
+    fn parse_block(&mut self) -> error::Result<Vec<Statement>> {
+        self.skip_newlines();
+        self.expect_exact(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut statements = Vec::new();
+        while self.peek_kind() != Some(&TokenKind::RBrace) {
+            if self.peek().is_none() {
+                return Err(error::MorphError::mapping(
+                    "unexpected end of input, expected '}'",
+                ));
+            }
+            let stmt = self.parse_statement()?;
+            statements.push(stmt);
+            self.skip_newlines();
+        }
+
+        self.expect_exact(&TokenKind::RBrace)?;
+        Ok(statements)
     }
 
     fn parse_path_list(&mut self) -> error::Result<Vec<Path>> {

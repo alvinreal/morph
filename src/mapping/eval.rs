@@ -28,6 +28,10 @@ fn eval_statement(stmt: &Statement, value: &Value) -> error::Result<Value> {
         Statement::Nest { paths, target, .. } => eval_nest(value, paths, target),
         Statement::Where { condition, .. } => eval_where(value, condition),
         Statement::Sort { keys, .. } => eval_sort(value, keys),
+        Statement::Each { path, body, .. } => eval_each(value, path, body),
+        Statement::When {
+            condition, body, ..
+        } => eval_when(value, condition, body),
     }
 }
 
@@ -331,6 +335,48 @@ fn eval_sort(value: &Value, keys: &[SortKey]) -> error::Result<Value> {
             Ok(Value::Array(sorted))
         }
         _ => Ok(value.clone()), // non-array: no-op
+    }
+}
+
+// ---------------------------------------------------------------------------
+// each
+// ---------------------------------------------------------------------------
+
+fn eval_each(value: &Value, path: &Path, body: &[Statement]) -> error::Result<Value> {
+    let target = resolve_path(value, &path.segments);
+    match target {
+        Some(Value::Array(arr)) => {
+            let mut updated = Vec::with_capacity(arr.len());
+            for item in &arr {
+                let mut result = item.clone();
+                for stmt in body {
+                    result = eval_statement(stmt, &result)?;
+                }
+                updated.push(result);
+            }
+            Ok(set_path(value, &path.segments, Value::Array(updated)))
+        }
+        Some(_) => Err(error::MorphError::mapping("each requires an array target")),
+        None => Err(error::MorphError::mapping(
+            "each target path does not exist",
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// when
+// ---------------------------------------------------------------------------
+
+fn eval_when(value: &Value, condition: &Expr, body: &[Statement]) -> error::Result<Value> {
+    let cond_result = eval_expr(condition, value)?;
+    if is_truthy(&cond_result) {
+        let mut result = value.clone();
+        for stmt in body {
+            result = eval_statement(stmt, &result)?;
+        }
+        Ok(result)
+    } else {
+        Ok(value.clone())
     }
 }
 
