@@ -31,7 +31,7 @@ pub fn to_string(value: &Value) -> error::Result<String> {
     Ok(s)
 }
 
-fn json_to_value(json: serde_json::Value) -> Value {
+pub(crate) fn json_to_value(json: serde_json::Value) -> Value {
     match json {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(b) => Value::Bool(b),
@@ -57,7 +57,7 @@ fn json_to_value(json: serde_json::Value) -> Value {
     }
 }
 
-fn value_to_json(value: &Value) -> serde_json::Value {
+pub(crate) fn value_to_json(value: &Value) -> serde_json::Value {
     match value {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
