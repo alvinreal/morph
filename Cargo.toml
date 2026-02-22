@@ -2,6 +2,11 @@
 name = "morph"
 version = "0.1.0"
 edition = "2021"
+description = "Universal data format converter with a mapping language"
+license = "MIT"
+repository = "https://github.com/alvinreal/morph"
+homepage = "https://github.com/alvinreal/morph"
+readme = "README.md"
 
 [[bin]]
 name = "morph"
@@ -32,3 +37,8 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "benchmarks"
 harness = false
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
