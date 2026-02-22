@@ -11,6 +11,7 @@ pub enum Format {
     Toml,
     Csv,
     Xml,
+    Msgpack,
 }
 
 impl Format {
@@ -23,6 +24,7 @@ impl Format {
             (Format::Toml, "TOML", &["toml"]),
             (Format::Csv, "CSV", &["csv"]),
             (Format::Xml, "XML", &["xml"]),
+            (Format::Msgpack, "MessagePack", &["msgpack", "mp"]),
         ]
     }
 
@@ -35,6 +37,7 @@ impl Format {
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
             "xml" => Some(Format::Xml),
+            "msgpack" | "mp" => Some(Format::Msgpack),
             _ => None,
         }
     }
@@ -55,6 +58,7 @@ impl Format {
             "toml" => Some(Format::Toml),
             "csv" => Some(Format::Csv),
             "xml" => Some(Format::Xml),
+            "msgpack" | "mp" => Some(Format::Msgpack),
             _ => None,
         }
     }
@@ -69,6 +73,7 @@ impl fmt::Display for Format {
             Format::Toml => write!(f, "toml"),
             Format::Csv => write!(f, "csv"),
             Format::Xml => write!(f, "xml"),
+            Format::Msgpack => write!(f, "msgpack"),
         }
     }
 }
@@ -196,6 +201,7 @@ pub fn parse_input(input: &str, format: Format) -> crate::error::Result<crate::v
         Format::Toml => crate::formats::toml::from_str(input),
         Format::Csv => crate::formats::csv::from_str(input),
         Format::Xml => crate::formats::xml::from_str(input),
+        Format::Msgpack => crate::formats::msgpack::from_str(input),
     }
 }
 
@@ -218,6 +224,7 @@ pub fn serialize_output(
         Format::Toml => crate::formats::toml::to_string(value),
         Format::Csv => crate::formats::csv::to_string(value),
         Format::Xml => crate::formats::xml::to_string(value),
+        Format::Msgpack => crate::formats::msgpack::to_string(value),
     }
 }
 
@@ -379,6 +386,12 @@ mod tests {
     }
 
     #[test]
+    fn format_from_extension_msgpack() {
+        assert_eq!(Format::from_extension("msgpack"), Some(Format::Msgpack));
+        assert_eq!(Format::from_extension("mp"), Some(Format::Msgpack));
+    }
+
+    #[test]
     fn format_from_path_json() {
         let p = PathBuf::from("data.json");
         assert_eq!(Format::from_path(&p), Some(Format::Json));
@@ -403,6 +416,8 @@ mod tests {
         assert_eq!(Format::from_name("xml"), Some(Format::Xml));
         assert_eq!(Format::from_name("jsonl"), Some(Format::Jsonl));
         assert_eq!(Format::from_name("ndjson"), Some(Format::Jsonl));
+        assert_eq!(Format::from_name("msgpack"), Some(Format::Msgpack));
+        assert_eq!(Format::from_name("mp"), Some(Format::Msgpack));
         assert_eq!(Format::from_name("nope"), None);
     }
 
@@ -518,6 +533,7 @@ mod tests {
         assert_eq!(Format::Toml.to_string(), "toml");
         assert_eq!(Format::Csv.to_string(), "csv");
         assert_eq!(Format::Xml.to_string(), "xml");
+        assert_eq!(Format::Msgpack.to_string(), "msgpack");
     }
 
     // -- Mapping CLI flags --------------------------------------------------
