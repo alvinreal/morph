@@ -1,0 +1,15 @@
+# release-plz configuration
+# https://release-plz.dev/docs/config
+
+[workspace]
+# Use git-cliff for changelog generation
+changelog_config = "cliff.toml"
+
+[[package]]
+name = "morph"
+# Publish to crates.io when the release PR is merged
+publish = true
+# Generate changelog
+changelog_update = true
+# Run semver checks to catch breaking changes
+semver_check = true
