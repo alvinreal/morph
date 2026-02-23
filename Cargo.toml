@@ -42,3 +42,13 @@ harness = false
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# cargo-binstall support — download pre-built binaries from GitHub Releases
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/morph-{ target }.tar.xz"
+bin-dir = "morph{ binary-ext }"
+pkg-fmt = "txz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/morph-{ target }.zip"
+pkg-fmt = "zip"
