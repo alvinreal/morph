@@ -172,50 +172,55 @@ morph is built in Rust and optimized for high-throughput data pipelines.
 
 ### Current Throughput (Criterion)
 
-Benchmarks are run at 100, 1,000, and 10,000 record scales.
+Measured from `cargo bench --bench benchmarks` on macOS arm64 (Feb 2026).
 
 #### Parsing
 
 | Format | 100 records | 1,000 records | 10,000 records |
 |--------|------------|---------------|----------------|
-| JSON   | ~118 MiB/s | ~121 MiB/s    | ~121 MiB/s     |
-| CSV    | ~72 MiB/s  | ~92 MiB/s     | ~99 MiB/s      |
-| YAML   | ~27 MiB/s  | ~26 MiB/s     | ~24 MiB/s      |
+| JSON   | ~127 MiB/s | ~129 MiB/s    | ~129 MiB/s     |
+| CSV    | ~79 MiB/s  | ~97 MiB/s     | ~103 MiB/s     |
+| YAML   | ~28 MiB/s  | ~29 MiB/s     | ~29 MiB/s      |
 
 #### Format Conversion
 
 | Conversion     | 100 records | 1,000 records | 10,000 records |
 |----------------|------------|---------------|----------------|
-| JSON → YAML    | ~65 MiB/s  | ~60 MiB/s     | ~55 MiB/s      |
-| CSV → JSON     | ~55 MiB/s  | ~70 MiB/s     | ~75 MiB/s      |
+| JSON → YAML    | ~41 MiB/s  | ~41 MiB/s     | ~42 MiB/s      |
+| CSV → JSON     | ~43 MiB/s  | ~50 MiB/s     | ~54 MiB/s      |
 
 #### Mapping Overhead
 
 | Operation           | 10,000 records |
 |---------------------|----------------|
-| `rename` (1 field)  | ~2 ms          |
-| `where` (filter)    | ~3 ms          |
-| Complex pipeline*   | ~5 ms          |
+| `rename` (1 field)  | ~3.8 ms        |
+| `where` (filter)    | ~3.0 ms        |
+| Complex pipeline*   | ~3.8 ms        |
 
 \* *rename + set + drop + cast combined*
 
-### Comparisons (jq / yq / mlr)
+### Head-to-Head (actual)
 
-People care about head-to-head comparisons, so morph includes a reproducible benchmark workflow and dataset-driven methodology.
+10,000-record JSON mapping task (`rename .name -> .username` + `where .age > 30`), same input file, same machine:
+
+| Tool | Mean runtime | Median runtime | Relative |
+|------|--------------|----------------|----------|
+| **morph** | **20.1 ms** | **20.0 ms** | **1.00x** |
+| jq | 46.1 ms | 46.3 ms | 2.29x slower |
+
+This test was run with warm cache and 12 timed iterations after warmup.
+
+### Comparison commands
 
 ```bash
-# morph baseline
-cargo bench
+# morph
+./target/release/morph -i /tmp/morph_bench.json -o /tmp/morph_out.json -m /tmp/morph_map.morph
 
-# Example external tool comparisons (same input/output task)
-# jq + yq chain
-hyperfine 'cat bench/data.json | jq -c . | yq -P > /tmp/out.yaml'
-
-# miller
-hyperfine 'mlr --ijson --ocsv cat bench/data.json > /tmp/out.csv'
+# jq equivalent
+jq 'map(select(.age > 30) | .username=.name | del(.name))' /tmp/morph_bench.json > /tmp/jq_out.json
 ```
 
-We publish morph's own Criterion numbers in this README, and cross-tool comparison numbers once they are measured on pinned hardware in CI.
+More cross-tool comparisons (yq/mlr) will be added as those tools are available in CI on pinned hardware.
 
 ### Run Benchmarks Locally
 
