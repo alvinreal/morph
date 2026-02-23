@@ -201,26 +201,51 @@ Measured from `cargo bench --bench benchmarks` on macOS arm64 (Feb 2026).
 
 ### Head-to-Head (actual)
 
-10,000-record JSON mapping task (`rename .name -> .username` + `where .age > 30`), same input file, same machine:
+All comparisons below were run on the same machine (macOS arm64), same 10,000-record dataset, with warmup and repeated timed runs via `hyperfine`.
 
-| Tool | Mean runtime | Median runtime | Relative |
-|------|--------------|----------------|----------|
-| **morph** | **20.1 ms** | **20.0 ms** | **1.00x** |
-| jq | 46.1 ms | 46.3 ms | 2.29x slower |
+#### 1) JSON → YAML conversion
 
-This test was run with warm cache and 12 timed iterations after warmup.
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** (`morph -f json -t yaml`) | **23.7 ms** | **1.00x** |
+| yq (`yq -P '.'`) | 713.2 ms | 30.03x slower |
+
+#### 2) JSON transform (rename + filter)
+
+Task: `rename .name -> .username` + `where .age > 30`
+
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** | **18.3 ms** | **1.00x** |
+| jq | 40.0 ms | 2.19x slower |
+| yq | 101.5 ms | 5.55x slower |
+
+#### 3) CSV → JSON conversion
+
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** (`morph -f csv -t json`) | **11.7 ms** | **1.00x** |
+| miller (`mlr --icsv --ojson`) | 17.2 ms | 1.47x slower |
 
 ### Comparison commands
 
 ```bash
-# morph
-./target/release/morph -i /tmp/morph_bench.json -o /tmp/morph_out.json -m /tmp/morph_map.morph
+# JSON -> YAML
+hyperfine --warmup 3 --runs 15 \
+  "./target/release/morph -i bench.json -o /tmp/morph_out.yaml -f json -t yaml" \
+  "yq -P '.' bench.json > /tmp/yq_out.yaml"
 
-# jq equivalent
-jq 'map(select(.age > 30) | .username=.name | del(.name))' /tmp/morph_bench.json > /tmp/jq_out.json
+# JSON transform (rename + filter)
+hyperfine --warmup 3 --runs 20 \
+  "./target/release/morph -i bench.json -o /tmp/morph_map.json -m mapping.morph -f json -t json" \
+  "jq 'map(select(.age > 30) | .username=.name | del(.name))' bench.json > /tmp/jq_map.json" \
+  "yq -o=json 'map(select(.age > 30) | .username = .name | del(.name))' bench.json > /tmp/yq_map.json"
+
+# CSV -> JSON
+hyperfine --warmup 3 --runs 20 \
+  "./target/release/morph -i bench.csv -o /tmp/morph_csv.json -f csv -t json" \
+  "mlr --icsv --ojson cat bench.csv > /tmp/mlr_csv.json"
 ```
-
-More cross-tool comparisons (yq/mlr) will be added as those tools are available in CI on pinned hardware.
 
 ### Run Benchmarks Locally
 
