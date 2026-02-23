@@ -1,0 +1,6 @@
+# bench-results directory is for local benchmark snapshots.
+# CI-generated snapshots are uploaded as GitHub Actions artifacts.
+# Only the README is tracked in git.
+*
+!README.md
+!.gitignore
