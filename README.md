@@ -203,29 +203,23 @@ Measured from `cargo bench --bench benchmarks` on macOS arm64 (Feb 2026).
 
 All comparisons below were run on the same machine (macOS arm64), same 10,000-record dataset, with warmup and repeated timed runs via `hyperfine`.
 
-#### 1) JSON → YAML conversion
+#### Detailed benchmark matrix
 
-| Tool | Mean runtime | Relative |
-|------|--------------|----------|
-| **morph** (`morph -f json -t yaml`) | **23.7 ms** | **1.00x** |
-| yq (`yq -P '.'`) | 713.2 ms | 30.03x slower |
+Task definitions:
+- **T1**: JSON → YAML conversion
+- **T2**: JSON transform (`rename .name -> .username` + `where .age > 30`)
+- **T3**: CSV → JSON conversion
 
-#### 2) JSON transform (rename + filter)
+| Tool | T1 mean (ms) | T1 vs morph | T2 mean (ms) | T2 vs morph | T3 mean (ms) | T3 vs morph | Capability notes |
+|------|--------------|-------------|--------------|-------------|--------------|-------------|------------------|
+| **morph** | **23.7** | **1.00x** | **18.3** | **1.00x** | **11.7** | **1.00x** | Multi-format + mapping DSL in one binary |
+| jq | N/A | N/A | 40.0 | 2.19x slower | N/A | N/A | Excellent JSON transform tool |
+| yq | 713.2 | 30.03x slower | 101.5 | 5.55x slower | N/A | N/A | YAML/JSON query + transform workflows |
+| miller (mlr) | N/A | N/A | N/A | N/A | 17.2 | 1.47x slower | Strong tabular (CSV/TSV/etc.) processing |
 
-Task: `rename .name -> .username` + `where .age > 30`
+**Environment:** macOS arm64, same 10,000-record dataset, warm cache, hyperfine warmup + repeated runs.
 
-| Tool | Mean runtime | Relative |
-|------|--------------|----------|
-| **morph** | **18.3 ms** | **1.00x** |
-| jq | 40.0 ms | 2.19x slower |
-| yq | 101.5 ms | 5.55x slower |
-
-#### 3) CSV → JSON conversion
-
-| Tool | Mean runtime | Relative |
-|------|--------------|----------|
-| **morph** (`morph -f csv -t json`) | **11.7 ms** | **1.00x** |
-| miller (`mlr --icsv --ojson`) | 17.2 ms | 1.47x slower |
+**Important:** `N/A` means that tool was not benchmarked for that specific task in this run (not necessarily impossible).
 
 ### Comparison commands
 
