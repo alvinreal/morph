@@ -166,44 +166,94 @@ cargo build --release
 
 📖 **[Full installation guide](docs/INSTALLATION.md)** — includes shell completions, manual downloads, updating, and troubleshooting.
 
-## Performance
+## ⚡ Blazingly Fast
 
-morph is built in Rust and designed for speed. Benchmarks are run using [Criterion](https://github.com/bheisler/criterion.rs) at 100, 1,000, and 10,000 record scales.
+morph is built in Rust and optimized for high-throughput data pipelines.
 
-### Throughput — Parsing
+### Current Throughput (Criterion)
+
+Measured from `cargo bench --bench benchmarks` on macOS arm64 (Feb 2026).
+
+#### Parsing
 
 | Format | 100 records | 1,000 records | 10,000 records |
 |--------|------------|---------------|----------------|
-| JSON   | ~118 MiB/s | ~121 MiB/s    | ~121 MiB/s     |
-| CSV    | ~72 MiB/s  | ~92 MiB/s     | ~99 MiB/s      |
-| YAML   | ~27 MiB/s  | ~26 MiB/s     | ~24 MiB/s      |
+| JSON   | ~127 MiB/s | ~129 MiB/s    | ~129 MiB/s     |
+| CSV    | ~79 MiB/s  | ~97 MiB/s     | ~103 MiB/s     |
+| YAML   | ~28 MiB/s  | ~29 MiB/s     | ~29 MiB/s      |
 
-### Throughput — Format Conversion
+#### Format Conversion
 
 | Conversion     | 100 records | 1,000 records | 10,000 records |
 |----------------|------------|---------------|----------------|
-| JSON → YAML    | ~65 MiB/s  | ~60 MiB/s     | ~55 MiB/s      |
-| CSV → JSON     | ~55 MiB/s  | ~70 MiB/s     | ~75 MiB/s      |
+| JSON → YAML    | ~41 MiB/s  | ~41 MiB/s     | ~42 MiB/s      |
+| CSV → JSON     | ~43 MiB/s  | ~50 MiB/s     | ~54 MiB/s      |
 
-### Mapping Overhead
-
-Mapping operations add minimal overhead on top of format conversion:
+#### Mapping Overhead
 
 | Operation           | 10,000 records |
 |---------------------|----------------|
-| `rename` (1 field)  | ~2 ms          |
-| `where` (filter)    | ~3 ms          |
-| Complex pipeline*   | ~5 ms          |
+| `rename` (1 field)  | ~3.8 ms        |
+| `where` (filter)    | ~3.0 ms        |
+| Complex pipeline*   | ~3.8 ms        |
 
 \* *rename + set + drop + cast combined*
 
-### Running Benchmarks Locally
+### Head-to-Head (actual)
+
+All comparisons below were run on the same machine (macOS arm64), same 10,000-record dataset, with warmup and repeated timed runs via `hyperfine`.
+
+#### 1) JSON → YAML conversion
+
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** (`morph -f json -t yaml`) | **23.7 ms** | **1.00x** |
+| yq (`yq -P '.'`) | 713.2 ms | 30.03x slower |
+
+#### 2) JSON transform (rename + filter)
+
+Task: `rename .name -> .username` + `where .age > 30`
+
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** | **18.3 ms** | **1.00x** |
+| jq | 40.0 ms | 2.19x slower |
+| yq | 101.5 ms | 5.55x slower |
+
+#### 3) CSV → JSON conversion
+
+| Tool | Mean runtime | Relative |
+|------|--------------|----------|
+| **morph** (`morph -f csv -t json`) | **11.7 ms** | **1.00x** |
+| miller (`mlr --icsv --ojson`) | 17.2 ms | 1.47x slower |
+
+### Comparison commands
 
 ```bash
-# Run the full benchmark suite
+# JSON -> YAML
+hyperfine --warmup 3 --runs 15 \
+  "./target/release/morph -i bench.json -o /tmp/morph_out.yaml -f json -t yaml" \
+  "yq -P '.' bench.json > /tmp/yq_out.yaml"
+
+# JSON transform (rename + filter)
+hyperfine --warmup 3 --runs 20 \
+  "./target/release/morph -i bench.json -o /tmp/morph_map.json -m mapping.morph -f json -t json" \
+  "jq 'map(select(.age > 30) | .username=.name | del(.name))' bench.json > /tmp/jq_map.json" \
+  "yq -o=json 'map(select(.age > 30) | .username = .name | del(.name))' bench.json > /tmp/yq_map.json"
+
+# CSV -> JSON
+hyperfine --warmup 3 --runs 20 \
+  "./target/release/morph -i bench.csv -o /tmp/morph_csv.json -f csv -t json" \
+  "mlr --icsv --ojson cat bench.csv > /tmp/mlr_csv.json"
+```
+
+### Run Benchmarks Locally
+
+```bash
+# Full suite
 cargo bench
 
-# Run a specific benchmark group
+# Specific groups
 cargo bench -- parse_json
 cargo bench -- mapping_rename
 
@@ -211,9 +261,9 @@ cargo bench -- mapping_rename
 cargo bench -- --list
 ```
 
-Results are saved to `target/criterion/` with HTML reports for detailed analysis. CI runs benchmarks on every PR and uploads results as artifacts.
+Results are saved to `target/criterion/` with HTML reports for detailed analysis.
 
-> **Note:** Numbers above are representative and will vary by machine. Run `cargo bench` on your hardware for accurate results.
+> **Note:** Performance varies by CPU, disk, and dataset shape. For apples-to-apples comparisons, run all tools on the same machine and same dataset.
 
 ## Design Principles
 
