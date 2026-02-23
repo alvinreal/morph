@@ -267,6 +267,12 @@ Results are saved to `target/criterion/` with HTML reports for detailed analysis
 4. **Composable** — chain with pipes, embed in scripts, use in CI
 5. **Fast** — Rust, zero-copy parsing where possible, streaming for large files
 
+## Documentation
+
+- 📖 **[Mapping Language Reference](docs/MAPPING_LANGUAGE.md)** — full syntax and semantics
+- 📦 **[Installation Guide](docs/INSTALLATION.md)** — all install methods, shell completions, troubleshooting
+- 🔄 **[Migration Guide](docs/MIGRATION.md)** — moving from jq / yq / mlr to morph
+
 ## License
 
 MIT
