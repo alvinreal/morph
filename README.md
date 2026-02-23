@@ -203,6 +203,17 @@ Measured from `cargo bench --bench benchmarks` on macOS arm64 (Feb 2026).
 
 All comparisons below were run on the same machine (macOS arm64), same 10,000-record dataset, with warmup and repeated timed runs via `hyperfine`.
 
+#### At-a-glance comparison
+
+| Tool | Multi-format convert | Transform language | Single binary workflow | Best measured relative vs morph* |
+|------|----------------------|--------------------|------------------------|----------------------------------|
+| **morph** | ✅ JSON/YAML/TOML/CSV/XML/MessagePack/etc. | ✅ purpose-built mapping DSL | ✅ | **1.00x (baseline)** |
+| jq | ⚠️ JSON-focused | ✅ jq filters | ✅ | 2.19x slower (JSON transform) |
+| yq | ⚠️ YAML/JSON focused | ✅ jq-style expressions | ✅ | 5.55x slower (JSON transform), 30.03x slower (JSON→YAML) |
+| miller (mlr) | ⚠️ tabular-first | ✅ DSL for records | ✅ | 1.47x slower (CSV→JSON) |
+
+\* Relative numbers are task-specific (not a universal score). See task tables below for exact commands and timings.
+
 #### 1) JSON → YAML conversion
 
 | Tool | Mean runtime | Relative |
