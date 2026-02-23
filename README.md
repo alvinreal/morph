@@ -168,62 +168,72 @@ cargo build --release
 
 ## ⚡ Blazingly Fast
 
-morph is built in Rust with zero-copy parsing, streaming I/O, and no runtime overhead. It's designed for large datasets and production pipelines where every millisecond counts.
+morph is built in Rust and optimized for high-throughput data pipelines.
 
-### morph vs. Competitors
+### Current Throughput (Criterion)
 
-Benchmark results on 10,000 records (JSON → YAML conversion):
+Benchmarks are run at 100, 1,000, and 10,000 record scales.
 
-| Tool        | Throughput | Speed vs morph | Warmup | Startup |
-|-------------|-----------|----------------|--------|---------|
-| **morph**   | **~55 MiB/s** | 1.0x | Instant | ~8ms   |
-| jq + yq     | ~12 MiB/s | 4.6x slower | ~200ms | ~25ms  |
-| python脚本  | ~8 MiB/s  | 6.9x slower | ~600ms | ~120ms |
-| miller      | ~18 MiB/s | 3.1x slower | ~120ms | ~45ms  |
+#### Parsing
 
-> **Why morph wins:** No toolchain overhead (no pip/ruby, no multiple tools chained). Single binary, instant startup, streaming through 10GB files with constant memory.
+| Format | 100 records | 1,000 records | 10,000 records |
+|--------|------------|---------------|----------------|
+| JSON   | ~118 MiB/s | ~121 MiB/s    | ~121 MiB/s     |
+| CSV    | ~72 MiB/s  | ~92 MiB/s     | ~99 MiB/s      |
+| YAML   | ~27 MiB/s  | ~26 MiB/s     | ~24 MiB/s      |
 
-### Format-Specific Performance
+#### Format Conversion
 
-| Format | Parsing | Serialization | Memory Efficient |
-|--------|---------|---------------|------------------|
-| JSON   | **121 MiB/s** | ~110 MiB/s | ✅ Streaming |
-| CSV    | **99 MiB/s** | ~95 MiB/s | ✅ Streaming |
-| YAML   | ~27 MiB/s | ~24 MiB/s | ⚠️ Full load |
-| XML    | ~35 MiB/s | ~30 MiB/s | ✅ Streaming |
-| JSONL  | **125 MiB/s** | ~118 MiB/s | ✅ Streaming |
+| Conversion     | 100 records | 1,000 records | 10,000 records |
+|----------------|------------|---------------|----------------|
+| JSON → YAML    | ~65 MiB/s  | ~60 MiB/s     | ~55 MiB/s      |
+| CSV → JSON     | ~55 MiB/s  | ~70 MiB/s     | ~75 MiB/s      |
 
-### Mapping Overhead
-
-Mapping operations add minimal overhead on top of conversion:
+#### Mapping Overhead
 
 | Operation           | 10,000 records |
 |---------------------|----------------|
-| `rename` (1 field)  | ~2 ms      |
-| `where` (filter)    | ~3 ms      |
-| `each` (loop)       | ~4 ms      |
-| Complex pipeline*   | ~5 ms      |
+| `rename` (1 field)  | ~2 ms          |
+| `where` (filter)    | ~3 ms          |
+| Complex pipeline*   | ~5 ms          |
 
-\* *rename + set + drop + cast + when combined*
+\* *rename + set + drop + cast combined*
 
-### Running Benchmarks Locally
+### Comparisons (jq / yq / mlr)
+
+People care about head-to-head comparisons, so morph includes a reproducible benchmark workflow and dataset-driven methodology.
 
 ```bash
-# Run the full benchmark suite
+# morph baseline
 cargo bench
 
-# Compare two基准
-cargo bench -- benches/benchmarks.rs -- --save-baseline morph
-cargo bench -- benches/benchmarks.rs -- --baseline morph
+# Example external tool comparisons (same input/output task)
+# jq + yq chain
+hyperfine 'cat bench/data.json | jq -c . | yq -P > /tmp/out.yaml'
 
-# Generate HTML report
-cargo bench -- --output-format bencher
-open target/criterion/report/index.html
+# miller
+hyperfine 'mlr --ijson --ocsv cat bench/data.json > /tmp/out.csv'
 ```
 
-Results are saved to `target/criterion/` with HTML reports for detailed analysis. CI runs benchmarks on every PR and uploads results as artifacts for regression detection.
+We publish morph's own Criterion numbers in this README, and cross-tool comparison numbers once they are measured on pinned hardware in CI.
 
-> **Note:** Numbers above are representative and will vary by machine. Run `cargo bench` on your hardware for accurate results.
+### Run Benchmarks Locally
+
+```bash
+# Full suite
+cargo bench
+
+# Specific groups
+cargo bench -- parse_json
+cargo bench -- mapping_rename
+
+# List available benchmarks
+cargo bench -- --list
+```
+
+Results are saved to `target/criterion/` with HTML reports for detailed analysis.
+
+> **Note:** Performance varies by CPU, disk, and dataset shape. For apples-to-apples comparisons, run all tools on the same machine and same dataset.
 
 ## Design Principles
 
