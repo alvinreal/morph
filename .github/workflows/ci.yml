@@ -13,6 +13,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable, nightly]
@@ -31,3 +32,98 @@ jobs:
         run: cargo build --verbose
       - name: Test
         run: cargo test --verbose
+      - name: Write cell result
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p compatibility-results
+          echo "${{ matrix.os }},${{ matrix.rust }},${{ job.status }}" \
+            > "compatibility-results/${{ matrix.os }}-${{ matrix.rust }}.csv"
+      - name: Upload cell result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-cell-${{ matrix.os }}-${{ matrix.rust }}
+          path: compatibility-results/
+          retention-days: 90
+
+  compatibility-report:
+    name: Compatibility Report
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: compat-cell-*
+          merge-multiple: true
+          path: results
+
+      - name: Generate compatibility matrix summary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPORT="compatibility-report"
+          mkdir -p "$REPORT"
+
+          # Header
+          {
+            echo "# Compatibility Matrix"
+            echo ""
+            echo "**Run:** #${{ github.run_number }}  "
+            echo "**Ref:** \`${{ github.ref_name }}\` (${{ github.sha }})  "
+            echo "**Date:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo ""
+            echo "| OS | Toolchain | Status |"
+            echo "|---|---|---|"
+          } > "$REPORT/compatibility-matrix.md"
+
+          ALL_PASS=true
+          for f in results/*.csv; do
+            while IFS=, read -r os rust status; do
+              if [ "$status" = "success" ]; then
+                icon="✅"
+              else
+                icon="❌"
+                ALL_PASS=false
+              fi
+              echo "| $os | $rust | $icon $status |" >> "$REPORT/compatibility-matrix.md"
+            done < "$f"
+          done
+
+          echo "" >> "$REPORT/compatibility-matrix.md"
+          if [ "$ALL_PASS" = "true" ]; then
+            echo "**Result: ✅ All platforms pass**" >> "$REPORT/compatibility-matrix.md"
+          else
+            echo "**Result: ❌ Some platforms failed**" >> "$REPORT/compatibility-matrix.md"
+          fi
+
+          # Also write a machine-readable JSON summary
+          echo '{"cells":[' > "$REPORT/compatibility-matrix.json"
+          FIRST=true
+          for f in results/*.csv; do
+            while IFS=, read -r os rust status; do
+              if [ "$FIRST" = "true" ]; then
+                FIRST=false
+              else
+                echo "," >> "$REPORT/compatibility-matrix.json"
+              fi
+              printf '{"os":"%s","rust":"%s","status":"%s"}' "$os" "$rust" "$status" \
+                >> "$REPORT/compatibility-matrix.json"
+            done < "$f"
+          done
+          echo '],"all_pass":'"$ALL_PASS"'}' >> "$REPORT/compatibility-matrix.json"
+
+          cat "$REPORT/compatibility-matrix.md"
+
+      - name: Post summary to GitHub Actions
+        shell: bash
+        run: cat compatibility-report/compatibility-matrix.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compatibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-report
+          path: compatibility-report/
+          retention-days: 90
