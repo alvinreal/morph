@@ -33,7 +33,13 @@ fn assert_golden(name: &str, actual: &str) {
         );
     });
 
-    if actual != expected {
+    // Normalize line endings so tests pass on Windows (CRLF) and Unix (LF)
+    let actual_normalized = actual.replace("\r\n", "\n");
+    let expected_normalized = expected.replace("\r\n", "\n");
+
+    if actual_normalized != expected_normalized {
+        let actual = &actual_normalized;
+        let expected = &expected_normalized;
         // Show a helpful diff
         let actual_lines: Vec<&str> = actual.lines().collect();
         let expected_lines: Vec<&str> = expected.lines().collect();
