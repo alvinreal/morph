@@ -136,15 +136,35 @@ coalesce(a, b, ...) # first non-null value
 
 ## Installation
 
+### Quick Install
+
 ```bash
-# From crates.io
+# macOS / Linux
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/alvinreal/morph/releases/latest/download/morph-installer.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/alvinreal/morph/releases/latest/download/morph-installer.ps1 | iex"
+```
+
+### Other Methods
+
+```bash
+# Homebrew
+brew install alvinreal/tap/morph
+
+# cargo binstall (pre-built binary)
+cargo binstall morph
+
+# cargo install (from source)
 cargo install morph-cli
 
-# From source
+# Build from source
 git clone https://github.com/alvinreal/morph.git
 cd morph
 cargo build --release
 ```
+
+📖 **[Full installation guide](docs/INSTALLATION.md)** — includes shell completions, manual downloads, updating, and troubleshooting.
 
 ## Design Principles
 
