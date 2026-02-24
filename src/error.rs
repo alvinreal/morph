@@ -132,6 +132,52 @@ impl MorphError {
 }
 
 // ---------------------------------------------------------------------------
+// Exit codes — deterministic, user-facing error categories
+// ---------------------------------------------------------------------------
+
+/// Deterministic exit codes for each error category.
+///
+/// These provide stable, scriptable exit semantics so callers can
+/// programmatically distinguish failure modes.
+///
+/// | Code | Category              | Description                               |
+/// |------|-----------------------|-------------------------------------------|
+/// |  0   | Success               | No error                                  |
+/// |  1   | General / unknown     | Catch-all (should not normally occur)      |
+/// |  2   | CLI / usage           | Invalid arguments, unknown flags           |
+/// |  3   | I/O                   | File not found, permission denied, etc.    |
+/// |  4   | Format / parse        | Malformed input data                       |
+/// |  5   | Mapping               | Error in mapping evaluation                |
+/// |  6   | Value                 | Type mismatch, overflow, invalid cast      |
+pub mod exit_code {
+    /// Catch-all for unexpected errors.
+    pub const GENERAL: i32 = 1;
+    /// Invalid CLI arguments or usage.
+    pub const CLI: i32 = 2;
+    /// I/O error (file not found, permission denied, broken pipe, etc.).
+    pub const IO: i32 = 3;
+    /// Format/parse error (malformed input data).
+    pub const FORMAT: i32 = 4;
+    /// Mapping evaluation error.
+    pub const MAPPING: i32 = 5;
+    /// Value error (type mismatch, overflow, invalid cast).
+    pub const VALUE: i32 = 6;
+}
+
+impl MorphError {
+    /// Return the deterministic exit code for this error category.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            MorphError::Cli(_) => exit_code::CLI,
+            MorphError::Io(_) => exit_code::IO,
+            MorphError::Format { .. } => exit_code::FORMAT,
+            MorphError::Mapping { .. } => exit_code::MAPPING,
+            MorphError::Value(_) => exit_code::VALUE,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pretty error formatting
 // ---------------------------------------------------------------------------
 
@@ -682,5 +728,69 @@ mod tests {
     fn edit_distance_empty() {
         assert_eq!(edit_distance("", "abc"), 3);
         assert_eq!(edit_distance("abc", ""), 3);
+    }
+
+    // -- Exit code tests --
+
+    #[test]
+    fn exit_code_cli() {
+        let err = MorphError::cli("bad flag");
+        assert_eq!(err.exit_code(), exit_code::CLI);
+        assert_eq!(err.exit_code(), 2);
+    }
+
+    #[test]
+    fn exit_code_io() {
+        let err: MorphError = std::io::Error::new(std::io::ErrorKind::NotFound, "gone").into();
+        assert_eq!(err.exit_code(), exit_code::IO);
+        assert_eq!(err.exit_code(), 3);
+    }
+
+    #[test]
+    fn exit_code_format() {
+        let err = MorphError::format("bad json");
+        assert_eq!(err.exit_code(), exit_code::FORMAT);
+        assert_eq!(err.exit_code(), 4);
+    }
+
+    #[test]
+    fn exit_code_mapping() {
+        let err = MorphError::mapping("unknown op");
+        assert_eq!(err.exit_code(), exit_code::MAPPING);
+        assert_eq!(err.exit_code(), 5);
+    }
+
+    #[test]
+    fn exit_code_value() {
+        let err = MorphError::value("overflow");
+        assert_eq!(err.exit_code(), exit_code::VALUE);
+        assert_eq!(err.exit_code(), 6);
+    }
+
+    #[test]
+    fn exit_codes_are_distinct() {
+        let codes = [
+            exit_code::GENERAL,
+            exit_code::CLI,
+            exit_code::IO,
+            exit_code::FORMAT,
+            exit_code::MAPPING,
+            exit_code::VALUE,
+        ];
+        // All codes should be unique
+        let mut seen = std::collections::HashSet::new();
+        for code in &codes {
+            assert!(seen.insert(code), "duplicate exit code: {code}");
+        }
+    }
+
+    #[test]
+    fn exit_codes_are_nonzero() {
+        assert_ne!(exit_code::GENERAL, 0);
+        assert_ne!(exit_code::CLI, 0);
+        assert_ne!(exit_code::IO, 0);
+        assert_ne!(exit_code::FORMAT, 0);
+        assert_ne!(exit_code::MAPPING, 0);
+        assert_ne!(exit_code::VALUE, 0);
     }
 }
