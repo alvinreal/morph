@@ -65,12 +65,13 @@ pub fn from_str_with_config(input: &str, config: &XmlConfig) -> error::Result<Va
             Ok(Event::Text(_)) => {
                 // Ignore top-level whitespace text
             }
-            Ok(Event::CData(ref e)) => {
-                if !found_root {
-                    let text = String::from_utf8_lossy(e.as_ref()).to_string();
-                    result = Value::String(text);
-                    found_root = true;
-                }
+            Ok(Event::CData(ref e)) if !found_root => {
+                let text = String::from_utf8_lossy(e.as_ref()).to_string();
+                result = Value::String(text);
+                found_root = true;
+            }
+            Ok(Event::CData(_)) => {
+                // Ignore CDATA after root element found
             }
             Err(e) => {
                 return Err(error::MorphError::format(format!(
