@@ -1,0 +1,234 @@
+.TH MORPH 1 "2025" "morph 0.1.0" "User Commands"
+.SH NAME
+morph \- universal data format converter with mapping language
+.SH SYNOPSIS
+.B morph
+[\fIOPTIONS\fR] [\fIINPUT\fR] [\fIOUTPUT\fR]
+.SH DESCRIPTION
+.B morph
+is a universal CLI data format converter with a mapping language.
+It supports converting between JSON, YAML, TOML, CSV, XML, MessagePack,
+and JSON Lines formats.
+.PP
+The mapping language provides operations like rename, select, drop, set,
+cast, where, each, when, flatten, nest, sort, and default. It includes
+30+ built-in functions for string, math, collection, and type operations.
+.SH OPTIONS
+.TP
+.BR \-i ", " \-\-input " " \fIFILE\fR
+Input file (reads from stdin if not specified)
+.TP
+.BR \-o ", " \-\-output " " \fIFILE\fR
+Output file (writes to stdout if not specified)
+.TP
+.BR \-f ", " \-\-from " " \fIFORMAT\fR
+Input format (auto-detected from file extension if not specified)
+.TP
+.BR \-t ", " \-\-to " " \fIFORMAT\fR
+Output format (auto-detected from file extension if not specified)
+.TP
+.BR \-\-pretty
+Pretty-print output (default for TTY)
+.TP
+.BR \-\-compact
+Compact output (default for pipes)
+.TP
+.BR \-\-indent " " \fIN\fR
+Indentation width in spaces
+.TP
+.BR \-\-formats
+List supported formats and exit
+.TP
+.BR \-m ", " \-\-mapping " " \fIFILE\fR
+Apply a mapping file (.morph)
+.TP
+.BR \-e ", " \-\-expr " " \fIEXPRESSION\fR
+Inline mapping expression (can be repeated)
+.TP
+.BR \-\-dry\-run
+Parse and validate the mapping without executing
+.TP
+.BR \-\-csv\-delimiter " " \fICHAR\fR
+CSV field delimiter character (default: comma)
+.TP
+.BR \-\-csv\-no\-header
+Input CSV has no header row
+.TP
+.BR \-\-csv\-header " " \fINAMES\fR
+Override CSV headers (comma-separated field names)
+.TP
+.BR \-\-xml\-root " " \fINAME\fR
+Root element name for XML output (default: "root")
+.TP
+.BR \-\-xml\-attr\-prefix " " \fIPREFIX\fR
+Attribute prefix for XML (default: "@")
+.TP
+.BR \-\-yaml\-multi\-doc
+Treat YAML input as multi-document (return array of documents)
+.TP
+.BR \-\-yaml\-doc\-marker
+Include document start marker (---) in YAML output
+.TP
+.BR \-\-csv\-always\-quote
+Always quote CSV fields
+.TP
+.BR \-\-csv\-quote\-style " " \fISTYLE\fR
+CSV quote style: always, never, necessary, non_numeric (default: necessary)
+.TP
+.BR \-\-csv\-null\-string " " \fISTRING\fR
+String to use for null values in CSV (default: empty)
+.TP
+.BR \-\-no\-color
+Disable colored output
+.TP
+.BR \-h ", " \-\-help
+Print help information
+.TP
+.BR \-V ", " \-\-version
+Print version information
+.SH SUPPORTED FORMATS
+.TS
+tab(|) nospaces;
+l l.
+Format|Extensions
+_
+JSON|json
+JSONL|jsonl, ndjson
+YAML|yaml, yml
+TOML|toml
+CSV|csv
+XML|xml
+MessagePack|msgpack, mp
+.TE
+.SH MAPPING LANGUAGE
+The mapping language allows transforming data during conversion.
+.SS Operations
+.TS
+tab(|) nospaces;
+l l.
+Operation|Description
+_
+rename|Rename fields
+select|Select specific fields
+drop|Drop specific fields
+set|Set field values
+cast|Cast values to types
+where|Filter records
+each|Apply expression to each element
+when|Conditional operations
+flatten|Flatten nested structures
+nest|Nest fields into sub-objects
+sort|Sort arrays
+default|Set default values
+.TE
+.SS Built-in Functions
+String functions: upper, lower, trim, replace, split, join, slice, len, contains, starts_with, ends_with
+.PP
+Math functions: abs, floor, ceil, round, sqrt, pow, min, max, sum, avg
+.PP
+Collection functions: keys, values, entries, pick, omit, merge, reverse, unique, group_by
+.PP
+Type functions: type, is_null, is_bool, is_num, is_str, is_arr, is_obj
+.PP
+Other functions: now, uuid, random, hash, encode, decode, format, parse
+.SH EXAMPLES
+Convert JSON to YAML:
+.PP
+.nf
+.RS
+morph input.json output.yaml
+.RE
+.fi
+.PP
+Convert CSV to JSON with pretty printing:
+.PP
+.nf
+.RS
+morph data.csv --to json --pretty
+.RE
+.fi
+.PP
+Apply a mapping file:
+.PP
+.nf
+.RS
+morph input.json output.yaml -m transform.morph
+.RE
+.fi
+.PP
+Inline mapping to rename fields:
+.PP
+.nf
+.RS
+morph input.json output.json -e 'rename(old_name: new_name)'
+.RE
+.fi
+.PP
+Filter and select:
+.PP
+.nf
+.RS
+morph data.json --to yaml -e 'where(age > 18)' -e 'select(name, email)'
+.RE
+.fi
+.PP
+Read from stdin, write to stdout:
+.PP
+.nf
+.RS
+cat data.json | morph --from json --to yaml --pretty
+.RE
+.fi
+.SH ENVIRONMENT
+.TP
+.BR NO_COLOR
+Set to any value to disable colored output
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+General error
+.TP
+.B 2
+Invalid arguments
+.TP
+.B 3
+Input/output error
+.TP
+.B 4
+Parse error
+.TP
+.B 5
+Mapping error
+.TP
+.B 6
+Format error
+.TP
+.B 7
+Conversion error
+.TP
+.B 8
+Validation error
+.SH FILES
+.TP
+.I ~/.config/morph/
+User configuration directory
+.TP
+.I *.morph
+Mapping files
+.SH SEE ALSO
+.BR jq (1),
+.BR yq (1),
+.BR mlr (1)
+.SH AUTHOR
+Written by alvinreal.
+.SH REPORTING BUGS
+Report bugs at: <https://github.com/alvinreal/morph/issues>
+.SH COPYRIGHT
+Copyright (c) 2025 alvinreal.
+License: MIT <https://opensource.org/licenses/MIT>
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

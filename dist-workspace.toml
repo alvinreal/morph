@@ -12,7 +12,25 @@ installers = ["shell", "powershell", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "alvinreal/homebrew-tap"
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+# Extended target list matching fd's coverage
+# macOS: Intel + Apple Silicon
+# Linux: x86_64 (GNU + MUSL), aarch64 (ARM64), i686, armv7
+# Windows: x86_64 (MSVC + GNU), i686
+targets = [
+  "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+  "arm-unknown-linux-gnueabihf",
+  "arm-unknown-linux-musleabihf",
+  "i686-pc-windows-msvc",
+  "i686-unknown-linux-gnu",
+  "i686-unknown-linux-musl",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+]
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
 # Whether to auto-include files like README, LICENSE, etc.

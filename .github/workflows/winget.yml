@@ -1,0 +1,24 @@
+# Publish morph to Windows Package Manager (winget)
+# This runs after a release is published
+name: Winget
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  winget:
+    name: Publish to Winget
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Publish to Winget
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: alvinreal.morph
+          installers-regex: '-pc-windows-msvc\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
+          fork-user: alvinreal
